@@ -129,9 +129,32 @@ namespace Voxel
                     return;
                 }
 
-                _world.SetBlocksBytes(Convert.FromBase64String(data.blocksBase64));
+                byte[] blockBytes = Convert.FromBase64String(data.blocksBase64);
+
+                int expectedBlockBytes =
+                    ChunkData.SizeX * ChunkData.SizeY * ChunkData.SizeZ;
+
+                if (blockBytes.Length != expectedBlockBytes)
+                {
+                    Debug.LogWarning(
+                        $"SaveSystem: неверный размер данных мира: " +
+                        $"{blockBytes.Length}, ожидалось {expectedBlockBytes}.");
+                    return;
+                }
+
+                if (!_world.SetBlocksBytes(blockBytes))
+                {
+                    Debug.LogWarning("SaveSystem: не удалось загрузить данные мира.");
+                    return;
+                }
+
                 _player.position = data.playerPosition;
-                _inventory.ApplySaveData(data.slotTypes, data.slotCounts, data.selected);
+                if (!_inventory.ApplySaveData(data.slotTypes, data.slotCounts, data.selected))
+                {
+                    Debug.LogWarning("SaveSystem: данные инвентаря повреждены.");
+                    return;
+                }
+
                 _stats.ApplySaveStats(data.health, data.hunger);
             }
             catch (Exception e)

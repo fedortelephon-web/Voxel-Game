@@ -245,19 +245,54 @@ public class InventorySystem : MonoBehaviour
         return (types, counts, _selected);
     }
 
-    /// <summary>Восстановить инвентарь из сохранения.</summary>
-    public void ApplySaveData(int[] types, int[] counts, int selected)
+    /// <summary>Проверяет данные инвентаря из сохранения.</summary>
+    public bool IsValidSaveData(int[] types, int[] counts, int selected)
     {
+        if (types == null || counts == null)
+            return false;
+
+        if (types.Length != SlotCount || counts.Length != SlotCount)
+            return false;
+
+        if (selected < 0 || selected >= HotbarCount)
+            return false;
+
+        for (int i = 0; i < SlotCount; i++)
+        {
+            if (!System.Enum.IsDefined(typeof(ItemType), types[i]))
+                return false;
+
+            if (counts[i] < 0 || counts[i] > MaxStack)
+                return false;
+
+            bool isEmpty = types[i] == (int)ItemType.None;
+
+            if (isEmpty && counts[i] != 0)
+                return false;
+
+            if (!isEmpty && counts[i] <= 0)
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>Восстановить инвентарь из сохранения.</summary>
+    public bool ApplySaveData(int[] types, int[] counts, int selected)
+    {
+        if (!IsValidSaveData(types, counts, selected))
+            return false;
+
         Clear();
-        if (types == null)
-            return;
-        int n = Mathf.Min(types.Length, SlotCount);
-        for (int i = 0; i < n; i++)
+
+        for (int i = 0; i < SlotCount; i++)
         {
             _slots[i] = (ItemType)types[i];
-            _counts[i] = (counts != null && i < counts.Length) ? counts[i] : 0;
+            _counts[i] = counts[i];
         }
-        _selected = Mathf.Clamp(selected, 0, HotbarCount - 1);
+
+        _selected = selected;
+        return true;
     }
 
     /// <summary>Очистить все слоты (для новой игры).</summary>
@@ -312,13 +347,18 @@ public class InventorySystem : MonoBehaviour
     /// <summary>Открыть или закрыть окно, управляя курсором.</summary>
     private void SetOpen(bool open)
     {
-        _isOpen = open;
-        if (!_isOpen)
+        if (!open)
         {
             StashHeld();
-            ReturnCraftItems();
+            bool craftReturned = ReturnCraftItems();
+
+            if (_heldType != ItemType.None || _heldCount > 0 || !craftReturned)
+                return;
+
             ClearDragState();
         }
+
+        _isOpen = open;
         Cursor.lockState = _isOpen ? CursorLockMode.None : CursorLockMode.Locked;
         Cursor.visible = _isOpen;
     }
@@ -340,26 +380,45 @@ public class InventorySystem : MonoBehaviour
     /// <summary>При закрытии складывает «руку» обратно в инвентарь.</summary>
     private void StashHeld()
     {
-        if (_heldType == ItemType.None)
+        if (_heldType == ItemType.None || _heldCount <= 0)
             return;
-        AddMultiple(_heldType, _heldCount);
-        _heldType = ItemType.None;
-        _heldCount = 0;
+
+        int added = AddMultiple(_heldType, _heldCount);
+        _heldCount -= added;
+
+        if (_heldCount <= 0)
+        {
+            _heldType = ItemType.None;
+            _heldCount = 0;
+        }
     }
 
     /// <summary>Возвращает предметы из крафт-слотов в инвентарь.</summary>
-    private void ReturnCraftItems()
+    private bool ReturnCraftItems()
     {
+        bool allReturned = true;
+
         for (int i = 0; i < CraftSlotCount; i++)
         {
-            if (_craftCounts[i] > 0)
+            if (_craftCounts[i] <= 0)
+                continue;
+
+            int added = AddMultiple(_craftSlots[i], _craftCounts[i]);
+            _craftCounts[i] -= added;
+
+            if (_craftCounts[i] <= 0)
             {
-                AddMultiple(_craftSlots[i], _craftCounts[i]);
-                _craftSlots[i] = ItemType.None;
                 _craftCounts[i] = 0;
+                _craftSlots[i] = ItemType.None;
+            }
+            else
+            {
+                allReturned = false;
             }
         }
+
         UpdateCraftResult();
+        return allReturned;
     }
 
     /// <summary>Очистить крафт-слоты.</summary>

@@ -37,11 +37,15 @@ namespace Voxel
         }
 
         /// <summary>Восстановить чанк из байтов.</summary>
-        public void FromBytes(byte[] data)
+        public bool FromBytes(byte[] data)
         {
-            int n = System.Math.Min(_blocks.Length, data.Length);
-            for (int i = 0; i < n; i++)
+            if (data == null || data.Length != _blocks.Length)
+                return false;
+
+            for (int i = 0; i < _blocks.Length; i++)
                 _blocks[i] = (BlockType)data[i];
+
+            return true;
         }
 
         /// <summary>Индекс в плоском массиве из трёхмерных координат.</summary>

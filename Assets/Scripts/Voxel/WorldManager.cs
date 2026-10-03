@@ -16,6 +16,7 @@ namespace Voxel
 
         private ChunkData _chunk;
         private MeshFilter _meshFilter;
+        private Mesh _chunkMesh;
 
         /// <summary>Awake выполняется раньше Start других скриптов: мир готов до загрузки сейва.</summary>
         private void Awake()
@@ -58,23 +59,33 @@ namespace Voxel
         }
 
         /// <summary>Байты чанка для сохранения.</summary>
+        /// <summary>Байты чанка для сохранения.</summary>
         public byte[] GetBlocksBytes()
         {
             return _chunk.ToBytes();
         }
 
         /// <summary>Загрузить байты чанка и пересобрать меш.</summary>
-        public void SetBlocksBytes(byte[] data)
+        public bool SetBlocksBytes(byte[] data)
         {
-            _chunk.FromBytes(data);
+            if (!_chunk.FromBytes(data))
+                return false;
+
             RebuildMesh();
+            return true;
         }
 
         /// <summary>Перестроить меш из текущих данных чанка.</summary>
         private void RebuildMesh()
         {
-            Mesh mesh = ChunkMesher.BuildMesh(_chunk);
-            _meshFilter.mesh = mesh;
+            Mesh newMesh = ChunkMesher.BuildMesh(_chunk);
+
+            Mesh oldMesh = _chunkMesh;
+            _chunkMesh = newMesh;
+            _meshFilter.sharedMesh = _chunkMesh;
+
+            if (oldMesh != null)
+                Destroy(oldMesh);
         }
 
         /// <summary>Детерминированный рельеф: трава сверху, земля, камень.</summary>
