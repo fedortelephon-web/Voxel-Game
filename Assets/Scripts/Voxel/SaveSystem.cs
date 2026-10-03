@@ -40,7 +40,17 @@ namespace Voxel
             _world = FindObjectOfType<WorldManager>();
             _inventory = FindObjectOfType<InventorySystem>();
             _stats = FindObjectOfType<SurvivalStats>();
-            _player = FindObjectOfType<PlayerController>().transform;
+
+            var playerController = FindObjectOfType<PlayerController>();
+
+            if (_world == null || _inventory == null || _stats == null || playerController == null)
+            {
+                Debug.LogError("SaveSystem: не найдены необходимые компоненты.");
+                enabled = false;
+                return;
+            }
+
+            _player = playerController.transform;
 
             _world.WorldChanged += RequestSave;
 
@@ -108,12 +118,26 @@ namespace Voxel
             if (!PlayerPrefs.HasKey(SaveKey))
                 return;
 
-            var data = JsonUtility.FromJson<SaveData>(PlayerPrefs.GetString(SaveKey));
+            try
+            {
+                var json = PlayerPrefs.GetString(SaveKey);
+                var data = JsonUtility.FromJson<SaveData>(json);
 
-            _world.SetBlocksBytes(Convert.FromBase64String(data.blocksBase64));
-            _player.position = data.playerPosition;
-            _inventory.ApplySaveData(data.slotTypes, data.slotCounts, data.selected);
-            _stats.ApplySaveStats(data.health, data.hunger);
+                if (data == null || string.IsNullOrEmpty(data.blocksBase64))
+                {
+                    Debug.LogWarning("SaveSystem: сохранение повреждено или пустое.");
+                    return;
+                }
+
+                _world.SetBlocksBytes(Convert.FromBase64String(data.blocksBase64));
+                _player.position = data.playerPosition;
+                _inventory.ApplySaveData(data.slotTypes, data.slotCounts, data.selected);
+                _stats.ApplySaveStats(data.health, data.hunger);
+            }
+            catch (Exception e)
+            {
+                Debug.LogError($"SaveSystem: ошибка загрузки сохранения: {e.Message}");
+            }
         }
     }
 }
