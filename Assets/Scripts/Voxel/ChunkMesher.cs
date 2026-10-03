@@ -65,7 +65,7 @@ namespace Voxel
             mesh.SetVertices(vertices);
             mesh.SetNormals(normals);
             mesh.SetColors(colors);
-            mesh.SetUVs(uvs);
+            mesh.SetUVs(0, uvs);
             mesh.SetTriangles(triangles, 0);
             return mesh;
         }
