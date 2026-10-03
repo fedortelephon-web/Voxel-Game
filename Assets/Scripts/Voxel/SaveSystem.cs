@@ -142,6 +142,15 @@ namespace Voxel
                     return;
                 }
 
+                if (!_inventory.IsValidSaveData(
+                        data.slotTypes,
+                        data.slotCounts,
+                        data.selected))
+                {
+                    Debug.LogWarning("SaveSystem: данные инвентаря повреждены.");
+                    return;
+                }
+
                 if (!_world.SetBlocksBytes(blockBytes))
                 {
                     Debug.LogWarning("SaveSystem: не удалось загрузить данные мира.");
@@ -149,9 +158,13 @@ namespace Voxel
                 }
 
                 _player.position = data.playerPosition;
-                if (!_inventory.ApplySaveData(data.slotTypes, data.slotCounts, data.selected))
+
+                if (!_inventory.ApplySaveData(
+                        data.slotTypes,
+                        data.slotCounts,
+                        data.selected))
                 {
-                    Debug.LogWarning("SaveSystem: данные инвентаря повреждены.");
+                    Debug.LogWarning("SaveSystem: не удалось загрузить инвентарь.");
                     return;
                 }
 
