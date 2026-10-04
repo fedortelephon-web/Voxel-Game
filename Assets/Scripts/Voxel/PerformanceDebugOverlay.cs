@@ -123,6 +123,10 @@ namespace Voxel
                     labelStyle);
 
                 GUILayout.Label(
+                    $"Chunk data est.: {world.EstimatedChunkDataMemoryMb:F1} MB",
+                    labelStyle);
+
+                GUILayout.Label(
                     $"Render: {world.RenderDistance}   Load: {world.LoadDistance}   " +
                     $"Queues: C {world.ChunkLoadQueueCount} / M {world.MeshBuildQueueCount}",
                     labelStyle);
