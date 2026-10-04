@@ -586,24 +586,62 @@ namespace Voxel
             int chunkX,
             int chunkZ)
         {
-            for (int x = 0; x < ChunkData.SizeX; x++)
+            // Проверяем также несколько колонок за пределами чанка.
+            // Это нужно потому, что крона дерева может заходить в соседний чанк.
+            const int FeatureRadius = 2;
+
+            int minWorldX = chunkX * ChunkData.SizeX - FeatureRadius;
+            int maxWorldX = chunkX * ChunkData.SizeX +
+                            ChunkData.SizeX - 1 +
+                            FeatureRadius;
+
+            int minWorldZ = chunkZ * ChunkData.SizeZ - FeatureRadius;
+            int maxWorldZ = chunkZ * ChunkData.SizeZ +
+                            ChunkData.SizeZ - 1 +
+                            FeatureRadius;
+
+            for (int worldX = minWorldX;
+                 worldX <= maxWorldX;
+                 worldX++)
             {
-                for (int z = 0; z < ChunkData.SizeZ; z++)
+                for (int worldZ = minWorldZ;
+                     worldZ <= maxWorldZ;
+                     worldZ++)
                 {
-                    BiomeDefinition biome = biomes[x, z];
+                    int centerLocalX =
+                        worldX - chunkX * ChunkData.SizeX;
+
+                    int centerLocalZ =
+                        worldZ - chunkZ * ChunkData.SizeZ;
+
+                    BiomeDefinition biome;
+
+                    if (centerLocalX >= 0 &&
+                        centerLocalX < ChunkData.SizeX &&
+                        centerLocalZ >= 0 &&
+                        centerLocalZ < ChunkData.SizeZ)
+                    {
+                        biome = biomes[
+                            centerLocalX,
+                            centerLocalZ];
+                    }
+                    else
+                    {
+                        biome = GetBiomeAtWorldPosition(
+                            worldX,
+                            worldZ);
+                    }
 
                     if (biome.TreeChance <= 0f)
                         continue;
 
-                    int worldX = chunkX * ChunkData.SizeX + x;
-                    int worldZ = chunkZ * ChunkData.SizeZ + z;
+                    int treeSeed = GetWorldColumnSeed(
+                        seed,
+                        worldX,
+                        worldZ);
 
-                    // Решение о дереве принимается по мировым координатам,
-                    // поэтому границы чанков больше не образуют сетку.
-                    int treeSeed = GetWorldColumnSeed(seed, worldX, worldZ);
                     var rng = new System.Random(treeSeed);
 
-                    // Небольшая естественная неоднородность плотности.
                     float densityNoise = Mathf.PerlinNoise(
                         (worldX + GetSeedOffset(seed, 30)) * 0.035f,
                         (worldZ + GetSeedOffset(seed, 31)) * 0.035f);
@@ -614,7 +652,41 @@ namespace Voxel
                     if (rng.NextDouble() > localChance)
                         continue;
 
-                    int top = heights[x, z] + 1;
+                    int terrainHeight;
+
+                    if (centerLocalX >= 0 &&
+                        centerLocalX < ChunkData.SizeX &&
+                        centerLocalZ >= 0 &&
+                        centerLocalZ < ChunkData.SizeZ)
+                    {
+                        terrainHeight = heights[
+                            centerLocalX,
+                            centerLocalZ];
+                    }
+                    else
+                    {
+                        ClimatePoint climate = ClimateSampler.Sample(
+                            seed,
+                            worldX,
+                            worldZ,
+                            temperatureScale,
+                            humidityScale,
+                            continentalnessScale,
+                            erosionScale);
+
+                        terrainHeight = GetTerrainHeight(
+                            worldX,
+                            worldZ,
+                            climate);
+                    }
+
+                    int localX =
+                        worldX - chunkX * ChunkData.SizeX;
+
+                    int localZ =
+                        worldZ - chunkZ * ChunkData.SizeZ;
+
+                    int top = terrainHeight + 1;
 
                     int trunk;
                     int canopyRadius;
@@ -650,14 +722,27 @@ namespace Voxel
                     if (top + trunk + 2 >= ChunkData.SizeY)
                         continue;
 
-                    for (int i = 0; i < trunk; i++)
-                        SetIfAir(
-                            chunk,
-                            x,
-                            top + i,
-                            z,
-                            BlockType.Wood);
+                    // Ствол принадлежит только чанку, в котором находится
+                    // центр дерева. Это не создаёт дубликатов между чанками.
+                    if (centerLocalX >= 0 &&
+                        centerLocalX < ChunkData.SizeX &&
+                        centerLocalZ >= 0 &&
+                        centerLocalZ < ChunkData.SizeZ)
+                    {
+                        for (int i = 0; i < trunk; i++)
+                        {
+                            SetIfAir(
+                                chunk,
+                                localX,
+                                top + i,
+                                localZ,
+                                BlockType.Wood);
+                        }
+                    }
 
+                    // Листва генерируется всеми чанками, на которые она
+                    // действительно попадает. Поэтому дерево на границе
+                    // чанка больше не «разрезается».
                     for (int dy = canopyBottom;
                          dy <= trunk;
                          dy++)
@@ -686,9 +771,13 @@ namespace Voxel
                                 : 1;
                         }
 
-                        for (int dx = -radius; dx <= radius; dx++)
+                        for (int dx = -radius;
+                             dx <= radius;
+                             dx++)
                         {
-                            for (int dz = -radius; dz <= radius; dz++)
+                            for (int dz = -radius;
+                                 dz <= radius;
+                                 dz++)
                             {
                                 if (Mathf.Abs(dx) == radius &&
                                     Mathf.Abs(dz) == radius)
@@ -696,9 +785,9 @@ namespace Voxel
 
                                 SetIfAir(
                                     chunk,
-                                    x + dx,
+                                    localX + dx,
                                     top + dy,
-                                    z + dz,
+                                    localZ + dz,
                                     BlockType.Leaves);
                             }
                         }
@@ -708,31 +797,42 @@ namespace Voxel
         }
 
         /// <summary>
-        /// Детерминированный seed одной мировой колонки X/Z.
-        /// Не зависит от координат чанка, поэтому распределение деревьев
-        /// не имеет швов и регулярной сетки на границах чанков.
+        /// Получить биом в произвольной мировой колонке.
+        /// Используется для генерации особенностей, которые пересекают границы чанков.
         /// </summary>
-        private static int GetWorldColumnSeed(
-            int worldSeed,
+        private BiomeDefinition GetBiomeAtWorldPosition(
             int worldX,
             int worldZ)
         {
-            unchecked
-            {
-                int hash = worldSeed;
+            ClimatePoint climate = ClimateSampler.Sample(
+                seed,
+                worldX,
+                worldZ,
+                temperatureScale,
+                humidityScale,
+                continentalnessScale,
+                erosionScale);
 
-                hash ^= worldX * 374761393;
-                hash = hash * 668265263;
+            int height = GetTerrainHeight(
+                worldX,
+                worldZ,
+                climate);
 
-                hash ^= worldZ * 1274126177;
-                hash = hash * unchecked((int)2246822519);
+            int biomeHeight = GetBiomeHeightForBiome(
+                worldX,
+                worldZ,
+                height);
 
-                hash ^= hash >> 13;
-                hash *= unchecked((int)3266489917);
-                hash ^= hash >> 16;
+            if (height < oceanWaterLevel)
+                return GetBiome(BiomeType.Ocean);
 
-                return hash;
-            }
+            biomeHeight = Mathf.Max(
+                biomeHeight,
+                oceanWaterLevel);
+
+            return BiomeResolver.Resolve(
+                climate,
+                biomeHeight);
         }
 
         /// <summary>
