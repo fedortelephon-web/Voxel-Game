@@ -24,6 +24,10 @@ public class PlayerController : MonoBehaviour
     [SerializeField] private float sneakHeight = 1.5f;        // высота хитбокса при приседании, м
     [SerializeField] private float sneakSpeedDrop = 1.29f;    // насколько медленнее при приседании, м/с
     [SerializeField] private float sneakCameraDrop = 0.2f;    // дополнительное опускание камеры в приседе, м
+    [Header("Полёт")]
+    [SerializeField] private float flySpeed = 18f;            // скорость полёта
+    [SerializeField] private float flyFastMultiplier = 3f;    // ускорение при CapsLock
+
 
     [Header("Мышь")]
     [SerializeField] private Transform playerCamera;      // дочерняя камера игрока
@@ -56,6 +60,7 @@ public class PlayerController : MonoBehaviour
     private bool _jumpArmed = true;
     private bool _sprinting;
     private bool _sneaking;
+    private bool _flying;
 
     private Camera _cam;
     private float _baseFov;
@@ -120,6 +125,17 @@ public class PlayerController : MonoBehaviour
         if (!uiOpen)
             UpdateLook();
         SyncPosition();
+        UpdateFlightToggle();
+
+        if (_flying)
+        {
+            TickFlying(Mathf.Min(Time.deltaTime, MaxFrameDelta));
+            transform.position = _position;
+            _lastPosition = _position;
+            UpdateFov();
+            UpdateSneakCamera();
+            return;
+        }
 
         float remaining = Mathf.Min(Time.deltaTime, MaxFrameDelta);
         while (remaining > MoveEpsilon)
@@ -136,7 +152,52 @@ public class PlayerController : MonoBehaviour
         UpdateSneakCamera();
     }
 
-    /// <summary>Обзор мышью: yaw на игроке, pitch на камере.</summary>
+    /// <summary>Включает или выключает свободный полёт для быстрого осмотра генерации мира.</summary>
+    private void UpdateFlightToggle()
+    {
+        if (Input.GetKeyDown(KeyCode.F))
+        {
+            _flying = !_flying;
+            _velocity = Vector3.zero;
+            _grounded = false;
+            _jumpArmed = true;
+            _sneaking = false;
+
+            Debug.Log(
+                $"PlayerController: свободный полёт {(_flying ? "включён" : "выключен")}");
+        }
+    }
+
+    /// <summary>Свободный полёт без гравитации и коллизий.</summary>
+    private void TickFlying(float dt)
+    {
+        float horizontal = Input.GetKey(KeyCode.D) ? 1f :
+            Input.GetKey(KeyCode.A) ? -1f : 0f;
+
+        float forward = Input.GetKey(KeyCode.W) ? 1f :
+            Input.GetKey(KeyCode.S) ? -1f : 0f;
+
+        float vertical = Input.GetKey(KeyCode.Space) ? 1f :
+            (Input.GetKey(KeyCode.LeftShift) || Input.GetKey(KeyCode.RightShift)) ? -1f : 0f;
+
+        Vector3 direction =
+            transform.forward * forward +
+            transform.right * horizontal +
+            Vector3.up * vertical;
+
+        if (direction.sqrMagnitude > 1f)
+            direction.Normalize();
+
+        float speed = flySpeed;
+
+        if (Input.GetKey(KeyCode.CapsLock))
+            speed *= flyFastMultiplier;
+
+        _position += direction * speed * dt;
+        _velocity = Vector3.zero;
+        _grounded = false;
+    }
+
     private void UpdateLook()
     {
         _yaw += Input.GetAxis("Mouse X") * mouseSensitivity;
