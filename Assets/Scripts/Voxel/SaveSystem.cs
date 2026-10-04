@@ -10,7 +10,7 @@ namespace Voxel
     /// </summary>
     public class SaveSystem : MonoBehaviour
     {
-        private const string SaveKey = "voxel_save_v16";
+        private const string SaveKey = "voxel_save_v17";
 
         [Header("Сохранение")]
         [SerializeField] private float saveDelay = 1f; // задержка, чтобы не писать на каждый клик
