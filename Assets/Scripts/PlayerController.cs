@@ -471,14 +471,6 @@ public class PlayerController : MonoBehaviour
         _cam.fieldOfView = Mathf.Lerp(_cam.fieldOfView, target, t);
     }
 
-    /// <summary>Плавно опускает камеру при приседании и поднимает обратно.</summary>
-    private void OnGUI()
-    {
-        GUI.Label(
-            new Rect(12f, 12f, 180f, 24f),
-            $"Высота: {_position.y:F1}");
-    }
-
     private void UpdateSneakCamera()
     {
         float target = _baseCamY - (_sneaking ? sneakCameraDrop : 0f);
