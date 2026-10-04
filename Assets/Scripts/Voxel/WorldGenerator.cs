@@ -165,10 +165,25 @@ namespace Voxel
                         worldZ,
                         height);
 
-                    BiomeDefinition biome =
-                        BiomeResolver.Resolve(
+                    // Вода определяется физической высотой рельефа,
+                    // поэтому суша никогда не может получить Ocean из-за
+                    // случайного смещения границы биома.
+                    BiomeDefinition biome;
+
+                    if (height < oceanWaterLevel)
+                    {
+                        biome = GetBiome(BiomeType.Ocean);
+                    }
+                    else
+                    {
+                        biomeHeight = Mathf.Max(
+                            biomeHeight,
+                            oceanWaterLevel);
+
+                        biome = BiomeResolver.Resolve(
                             climate,
                             biomeHeight);
+                    }
 
                     biomeCounts[(int)biome.Type]++;
 
@@ -205,8 +220,7 @@ namespace Voxel
                     // появляется только в самых низких участках.
                     int waterLevel = -1;
 
-                    if (biome.Type == BiomeType.Ocean &&
-                        height < oceanWaterLevel)
+                    if (height < oceanWaterLevel)
                     {
                         waterLevel = oceanWaterLevel;
                     }
@@ -314,10 +328,22 @@ namespace Voxel
                         sampleZ,
                         height);
 
-                    BiomeDefinition biome =
-                        BiomeResolver.Resolve(
+                    BiomeDefinition biome;
+
+                    if (height < oceanWaterLevel)
+                    {
+                        biome = GetBiome(BiomeType.Ocean);
+                    }
+                    else
+                    {
+                        biomeHeight = Mathf.Max(
+                            biomeHeight,
+                            oceanWaterLevel);
+
+                        biome = BiomeResolver.Resolve(
                             climate,
                             biomeHeight);
+                    }
 
                     map.Append(GetBiomeSymbol(biome.Type));
                 }
@@ -388,6 +414,17 @@ namespace Voxel
 
             return Mathf.RoundToInt(
                 terrainHeight + variation);
+        }
+
+        private static BiomeDefinition GetBiome(BiomeType type)
+        {
+            foreach (BiomeDefinition biome in BiomeRegistry.All)
+            {
+                if (biome.Type == type)
+                    return biome;
+            }
+
+            return BiomeRegistry.All[0];
         }
 
         /// <summary>
