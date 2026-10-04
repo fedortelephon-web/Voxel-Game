@@ -23,7 +23,6 @@ namespace Voxel
         private float sampleTimer;
 
         private GUIStyle labelStyle;
-        private GUIStyle headerStyle;
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.AfterSceneLoad)]
         private static void Create()
@@ -95,15 +94,11 @@ namespace Voxel
             EnsureStyles();
 
             GUI.Box(
-                new Rect(10f, 10f, 390f, 255f),
+                new Rect(10f, 10f, 390f, 220f),
                 GUIContent.none);
 
             GUILayout.BeginArea(
-                new Rect(20f, 18f, 370f, 240f));
-
-            GUILayout.Label(
-                "VOXEL PERFORMANCE",
-                headerStyle);
+                new Rect(18f, 15f, 374f, 210f));
 
             GUILayout.Label(
                 $"FPS: {fps:F1}   Frame: {frameMs:F2} ms",
@@ -180,14 +175,11 @@ namespace Voxel
 
             labelStyle = new GUIStyle(GUI.skin.label)
             {
-                fontSize = 14,
-                richText = false
-            };
-
-            headerStyle = new GUIStyle(GUI.skin.label)
-            {
-                fontSize = 17,
-                fontStyle = FontStyle.Bold
+                fontSize = 11,
+                richText = false,
+                margin = new RectOffset(0, 0, 0, 0),
+                padding = new RectOffset(0, 0, 0, 0),
+                fixedHeight = 14f
             };
         }
     }
