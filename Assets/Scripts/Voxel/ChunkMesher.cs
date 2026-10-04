@@ -1,5 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
+using UnityEngine.Rendering;
 
 namespace Voxel
 {
@@ -9,6 +10,11 @@ namespace Voxel
     /// </summary>
     public static class ChunkMesher
     {
+        // Предварительное резервирование уменьшает расширения List и
+        // временный мусор при построении мешей.
+        private const int InitialVertexCapacity = 4096;
+        private const int InitialTriangleIndexCapacity = 6144;
+
         private static readonly Vector3Int[] Directions =
         {
             Vector3Int.right, Vector3Int.left,
@@ -37,11 +43,20 @@ namespace Voxel
             int chunkX,
             int chunkZ)
         {
-            var vertices = new List<Vector3>();
-            var normals = new List<Vector3>();
-            var colors = new List<Color>();
-            var uvs = new List<Vector2>();
-            var triangles = new List<int>();
+            var vertices =
+                new List<Vector3>(InitialVertexCapacity);
+
+            var normals =
+                new List<Vector3>(InitialVertexCapacity);
+
+            var colors =
+                new List<Color>(InitialVertexCapacity);
+
+            var uvs =
+                new List<Vector2>(InitialVertexCapacity);
+
+            var triangles =
+                new List<int>(InitialTriangleIndexCapacity);
 
             for (int y = 0; y < ChunkData.SizeY; y++)
             for (int z = 0; z < ChunkData.SizeZ; z++)
@@ -122,6 +137,13 @@ namespace Voxel
                 {
                     name = "ChunkMesh"
                 };
+
+            // Индексный буфер 16-bit почти всегда достаточен для нашего
+            // чанка; при переполнении автоматически остаёмся на 32-bit.
+            mesh.indexFormat =
+                vertices.Count <= 65535
+                    ? IndexFormat.UInt16
+                    : IndexFormat.UInt32;
 
             mesh.SetVertices(vertices);
             mesh.SetNormals(normals);
