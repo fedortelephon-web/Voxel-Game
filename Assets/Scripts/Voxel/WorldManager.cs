@@ -34,6 +34,7 @@ namespace Voxel
         // Диагностика производительности. Значения нужны для профилирования
         // WebGL/Yandex Games и не влияют на генерацию мира.
         public float LastWorldGenerationMs { get; private set; }
+        public float LastWorldMeshBuildMs { get; private set; }
         public float LastChunkGenerationMs { get; private set; }
         public float MaxChunkGenerationMs { get; private set; }
         public float LastMeshRebuildMs { get; private set; }
@@ -62,9 +63,13 @@ namespace Voxel
                 }
             }
 
-            RebuildAllMeshes();
             LastWorldGenerationMs =
                 (Time.realtimeSinceStartup - startTime) * 1000f;
+
+            float meshStartTime = Time.realtimeSinceStartup;
+            RebuildAllMeshes();
+            LastWorldMeshBuildMs =
+                (Time.realtimeSinceStartup - meshStartTime) * 1000f;
 
             worldGenerator.LogBiomeMap(
                 WorldMinChunkX * ChunkData.SizeX,
