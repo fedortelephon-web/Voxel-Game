@@ -908,6 +908,33 @@ namespace Voxel
         }
 
         /// <summary>
+        /// Получить детерминированный seed одной мировой колонки X/Z.
+        /// Используется для генерации деревьев без привязки к границам чанков.
+        /// </summary>
+        private static int GetWorldColumnSeed(
+            int worldSeed,
+            int worldX,
+            int worldZ)
+        {
+            unchecked
+            {
+                int hash = worldSeed;
+
+                hash ^= worldX * 374761393;
+                hash = hash * 668265263;
+
+                hash ^= worldZ * 1274126177;
+                hash = hash * unchecked((int)2246822519);
+
+                hash ^= hash >> 13;
+                hash *= unchecked((int)3266489917);
+                hash ^= hash >> 16;
+
+                return hash;
+            }
+        }
+
+        /// <summary>
         /// Получить уникальный детерминированный seed для чанка.
         /// </summary>
         private static int GetChunkSeed(int worldSeed, int chunkX, int chunkZ)
