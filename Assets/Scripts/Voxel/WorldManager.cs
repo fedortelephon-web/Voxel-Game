@@ -1163,6 +1163,9 @@ namespace Voxel
                 Transform child =
                     transform.GetChild(i);
 
+                if (!child.gameObject.activeSelf)
+                    continue;
+
                 child.gameObject.SetActive(false);
                 _chunkObjectPool.Enqueue(
                     child.gameObject);
