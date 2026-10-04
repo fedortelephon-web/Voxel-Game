@@ -586,16 +586,32 @@ namespace Voxel
             int chunkX,
             int chunkZ)
         {
-            int chunkSeed = GetChunkSeed(seed, chunkX, chunkZ);
-            var rng = new System.Random(chunkSeed);
-
-            for (int x = 2; x < ChunkData.SizeX - 2; x++)
+            for (int x = 0; x < ChunkData.SizeX; x++)
             {
-                for (int z = 2; z < ChunkData.SizeZ - 2; z++)
+                for (int z = 0; z < ChunkData.SizeZ; z++)
                 {
                     BiomeDefinition biome = biomes[x, z];
 
-                    if (rng.NextDouble() > biome.TreeChance)
+                    if (biome.TreeChance <= 0f)
+                        continue;
+
+                    int worldX = chunkX * ChunkData.SizeX + x;
+                    int worldZ = chunkZ * ChunkData.SizeZ + z;
+
+                    // Решение о дереве принимается по мировым координатам,
+                    // поэтому границы чанков больше не образуют сетку.
+                    int treeSeed = GetWorldColumnSeed(seed, worldX, worldZ);
+                    var rng = new System.Random(treeSeed);
+
+                    // Небольшая естественная неоднородность плотности.
+                    float densityNoise = Mathf.PerlinNoise(
+                        (worldX + GetSeedOffset(seed, 30)) * 0.035f,
+                        (worldZ + GetSeedOffset(seed, 31)) * 0.035f);
+
+                    float localChance = biome.TreeChance *
+                        Mathf.Lerp(0.65f, 1.35f, densityNoise);
+
+                    if (rng.NextDouble() > localChance)
                         continue;
 
                     int top = heights[x, z] + 1;
@@ -607,21 +623,19 @@ namespace Voxel
                     switch (biome.Type)
                     {
                         case BiomeType.Forest:
-                            trunk = 5;
+                            trunk = 5 + rng.Next(0, 3);
                             canopyRadius = 2;
                             canopyBottom = 2;
                             break;
 
                         case BiomeType.Taiga:
-                            // Высокие узкие хвойные силуэты.
-                            trunk = 7;
+                            trunk = 7 + rng.Next(0, 3);
                             canopyRadius = 2;
                             canopyBottom = 3;
                             break;
 
                         case BiomeType.Swamp:
-                            // Низкие раскидистые деревья, в том числе у воды.
-                            trunk = 4;
+                            trunk = 4 + rng.Next(0, 2);
                             canopyRadius = 2;
                             canopyBottom = 2;
                             break;
@@ -637,7 +651,8 @@ namespace Voxel
                         continue;
 
                     for (int i = 0; i < trunk; i++)
-                        chunk.SetBlock(
+                        SetIfAir(
+                            chunk,
                             x,
                             top + i,
                             z,
@@ -675,7 +690,6 @@ namespace Voxel
                         {
                             for (int dz = -radius; dz <= radius; dz++)
                             {
-                                // Скругляем углы кроны.
                                 if (Mathf.Abs(dx) == radius &&
                                     Mathf.Abs(dz) == radius)
                                     continue;
@@ -690,6 +704,34 @@ namespace Voxel
                         }
                     }
                 }
+            }
+        }
+
+        /// <summary>
+        /// Детерминированный seed одной мировой колонки X/Z.
+        /// Не зависит от координат чанка, поэтому распределение деревьев
+        /// не имеет швов и регулярной сетки на границах чанков.
+        /// </summary>
+        private static int GetWorldColumnSeed(
+            int worldSeed,
+            int worldX,
+            int worldZ)
+        {
+            unchecked
+            {
+                int hash = worldSeed;
+
+                hash ^= worldX * 374761393;
+                hash = hash * 668265263;
+
+                hash ^= worldZ * 1274126177;
+                hash = hash * unchecked((int)2246822519);
+
+                hash ^= hash >> 13;
+                hash *= unchecked((int)3266489917);
+                hash ^= hash >> 16;
+
+                return hash;
             }
         }
 
