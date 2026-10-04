@@ -41,6 +41,9 @@ namespace Voxel
         {
             var chunk = new ChunkData();
             var heights = new int[ChunkData.SizeX, ChunkData.SizeZ];
+            var biomes = new BiomeDefinition[
+                ChunkData.SizeX,
+                ChunkData.SizeZ];
 
             for (int x = 0; x < ChunkData.SizeX; x++)
             {
