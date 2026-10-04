@@ -883,9 +883,34 @@ namespace Voxel
                     // Листва генерируется всеми чанками, на которые она
                     // действительно попадает. Поэтому дерево на границе
                     // чанка больше не «разрезается».
-                    for (int dy = canopyBottom;
-                         dy <= trunk;
-                         dy++)
+                    //
+                    // Для ели обходим уровни сверху вниз: именно такой порядок
+                    // используется SpruceFoliagePlacer, поскольку состояние
+                    // радиуса меняется от яруса к ярусу.
+                    int spruceFoliageHeight = 0;
+                    int spruceCurrentRadius = 0;
+                    int spruceRadiusCeiling = 1;
+                    int spruceNextRadius = 0;
+
+                    if (biome.Type == BiomeType.Taiga)
+                    {
+                        // Аналог vanilla SpruceFoliagePlacer:
+                        // высота кроны зависит от высоты ствола.
+                        spruceFoliageHeight = Mathf.Max(
+                            4,
+                            trunk - rng.Next(1, 3));
+
+                        spruceFoliageHeight = Mathf.Min(
+                            spruceFoliageHeight,
+                            trunk - canopyBottom + 1);
+
+                        // Vanilla начинает с радиуса 0 или 1.
+                        spruceCurrentRadius = rng.Next(0, 2);
+                    }
+
+                    for (int dy = trunk;
+                         dy >= canopyBottom;
+                         dy--)
                     {
                         float t = Mathf.InverseLerp(
                             canopyBottom,
@@ -893,8 +918,6 @@ namespace Voxel
                             dy);
 
                         // Крона не должна заканчиваться плоским слоем.
-                        // Радиус сначала увеличивается к середине кроны,
-                        // а затем уменьшается к верхушке.
                         float crownShape = Mathf.Sin(t * Mathf.PI);
                         int radius = Mathf.RoundToInt(
                             canopyRadius * crownShape);
@@ -903,8 +926,7 @@ namespace Voxel
                         if (dy < trunk && radius < 1)
                             radius = 1;
 
-                        // Верхний слой — одна точка, поэтому дерево получает
-                        // округлую/заострённую верхушку вместо плоской шапки.
+                        // Верхний слой — одна точка.
                         if (dy == trunk)
                             radius = 0;
 
@@ -921,54 +943,35 @@ namespace Voxel
 
                         if (biome.Type == BiomeType.Taiga)
                         {
-                            // Используем тот же принцип, что и ванильный
-                            // Minecraft SpruceFoliagePlacer: радиус кроны
-                            // растёт ступенчато, а после достижения текущего
-                            // максимума сбрасывается. Получаются отдельные
-                            // ярусы, которые постепенно становятся шире вниз.
-                            //
-                            // В Minecraft для ели используются:
-                            // radius = 2..3, начальный радиус = 0..1,
-                            // а высота кроны зависит от высоты ствола.
-                            // Здесь эти параметры адаптированы под наш voxel-мир.
-                            int spruceFoliageHeight = Mathf.Max(
-                                4,
-                                trunk - rng.Next(1, 3));
-
-                            spruceFoliageHeight = Mathf.Min(
-                                spruceFoliageHeight,
-                                trunk - canopyBottom + 1);
-
-                            int currentRadius = rng.Next(0, 2);
-                            int radiusCeiling = 1;
-                            int nextRadius = 0;
-
-                            // Для разных елей максимальный радиус различается:
-                            // 2 или 3 блока от ствола.
-                            int spruceMaxRadius = canopyRadius;
-
                             int rowFromTop = trunk - dy;
 
-                            if (rowFromTop >= 0 &&
-                                rowFromTop < spruceFoliageHeight)
+                            if (rowFromTop < spruceFoliageHeight)
                             {
-                                radius = currentRadius;
+                                // Это непосредственно логика
+                                // Minecraft SpruceFoliagePlacer:
+                                // текущий радиус увеличивается, пока не
+                                // достигает текущего потолка, после чего
+                                // сбрасывается в 0/1 и потолок растёт.
+                                radius = spruceCurrentRadius;
 
-                                // Точная логика перехода между ярусами
-                                // из SpruceFoliagePlacer.
-                                if (currentRadius >= radiusCeiling)
+                                if (spruceCurrentRadius >=
+                                    spruceRadiusCeiling)
                                 {
-                                    currentRadius = nextRadius;
-                                    nextRadius = 1;
+                                    spruceCurrentRadius = spruceNextRadius;
+                                    spruceNextRadius = 1;
 
-                                    radiusCeiling = Mathf.Min(
-                                        radiusCeiling + 1,
-                                        spruceMaxRadius);
+                                    spruceRadiusCeiling = Mathf.Min(
+                                        spruceRadiusCeiling + 1,
+                                        canopyRadius);
                                 }
                                 else
                                 {
-                                    currentRadius++;
+                                    spruceCurrentRadius++;
                                 }
+                            }
+                            else
+                            {
+                                radius = 0;
                             }
                         }
                         else if (biome.Type == BiomeType.Swamp)
@@ -989,6 +992,8 @@ namespace Voxel
                                  dz <= radius;
                                  dz++)
                             {
+                                // Как в SpruceFoliagePlacer:
+                                // углы квадратного слоя отбрасываются.
                                 if (Mathf.Abs(dx) == radius &&
                                     Mathf.Abs(dz) == radius)
                                     continue;
