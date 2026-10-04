@@ -583,13 +583,13 @@ MonoBehaviour:
   maxTerrainHeight: 128
   terrainScale: 0.008
   detailScale: 0.035
-  mountainScale: 0.004
+  mountainScale: 0.0008
   biomeHeightVariation: 20
-  biomeHeightVariationScale: 0.012
-  temperatureScale: 0.015
-  humidityScale: 0.012
-  continentalnessScale: 0.006
-  erosionScale: 0.012
+  biomeHeightVariationScale: 0.0024
+  temperatureScale: 0.003
+  humidityScale: 0.0024
+  continentalnessScale: 0.0012
+  erosionScale: 0.0024
   dirtDepth: 3
   generateTrees: 1
 --- !u!4 &627250245
