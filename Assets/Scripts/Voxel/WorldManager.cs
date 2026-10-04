@@ -60,6 +60,11 @@ namespace Voxel
         private readonly HashSet<Vector2Int> _queuedMeshBuilds =
             new HashSet<Vector2Int>();
 
+        // Пул объектов чанков уменьшает GC и количество Instantiate/Destroy
+        // при постоянном движении игрока по бесконечному миру.
+        private readonly Queue<GameObject> _chunkObjectPool =
+            new Queue<GameObject>();
+
         private Material _runtimeBlockMaterial;
         private Transform _player;
         private Vector2Int _currentPlayerChunk;
@@ -81,6 +86,13 @@ namespace Voxel
         public int RenderDistance => renderDistanceChunks;
         public int LoadDistance => loadDistanceChunks;
         public int WorldSeed => worldGenerator != null ? worldGenerator.Seed : 0;
+
+        public float EstimatedChunkDataMemoryMb =>
+            _chunks.Count *
+            ChunkData.SizeX *
+            ChunkData.SizeY *
+            ChunkData.SizeZ /
+            (1024f * 1024f);
 
         public float LastWorldGenerationMs { get; private set; }
         public float LastWorldMeshBuildMs { get; private set; }
@@ -410,9 +422,27 @@ namespace Voxel
 
             _chunks[coord] = chunk;
 
-            GameObject go =
-                new GameObject(
-                    $"Chunk_{chunkX}_{chunkZ}");
+            GameObject go;
+
+            if (_chunkObjectPool.Count > 0)
+            {
+                go =
+                    _chunkObjectPool.Dequeue();
+
+                go.SetActive(true);
+            }
+            else
+            {
+                go =
+                    new GameObject();
+
+                go.transform.SetParent(transform);
+                go.AddComponent<MeshFilter>();
+                go.AddComponent<MeshRenderer>();
+            }
+
+            go.name =
+                $"Chunk_{chunkX}_{chunkZ}";
 
             go.transform.SetParent(transform);
             go.transform.localPosition =
@@ -422,10 +452,10 @@ namespace Voxel
                     chunkZ * ChunkData.SizeZ);
 
             MeshFilter filter =
-                go.AddComponent<MeshFilter>();
+                go.GetComponent<MeshFilter>();
 
             MeshRenderer renderer =
-                go.AddComponent<MeshRenderer>();
+                go.GetComponent<MeshRenderer>();
 
             renderer.sharedMaterial =
                 _runtimeBlockMaterial;
@@ -796,6 +826,10 @@ namespace Voxel
             renderer.enabled = true;
 
             AddMeshMetrics(mesh);
+
+            // После загрузки в GPU CPU-копия данных меша больше не нужна.
+            // Это уменьшает системную память на каждом видимом чанке.
+            mesh.UploadMeshData(true);
         }
 
         private void UnloadChunkMeshOnly(
@@ -882,7 +916,11 @@ namespace Voxel
                     out MeshFilter chunkFilter) &&
                 chunkFilter != null)
             {
-                Destroy(chunkFilter.gameObject);
+                GameObject go =
+                    chunkFilter.gameObject;
+
+                go.SetActive(false);
+                _chunkObjectPool.Enqueue(go);
             }
 
             _meshFilters.Remove(coord);
@@ -1122,8 +1160,12 @@ namespace Voxel
                  i >= 0;
                  i--)
             {
-                Destroy(
-                    transform.GetChild(i).gameObject);
+                Transform child =
+                    transform.GetChild(i);
+
+                child.gameObject.SetActive(false);
+                _chunkObjectPool.Enqueue(
+                    child.gameObject);
             }
         }
 
