@@ -66,7 +66,6 @@ namespace Voxel
             new Queue<GameObject>();
 
         private Material _runtimeBlockMaterial;
-        private Material _runtimeWaterMaterial;
         private Transform _player;
         private Vector2Int _currentPlayerChunk;
         private Vector2Int _lastCacheTrimChunk;
@@ -107,7 +106,6 @@ namespace Voxel
         private void Awake()
         {
             EnsureRuntimeMaterial();
-            EnsureRuntimeWaterMaterial();
             ResetPerformanceMetrics();
         }
 
@@ -459,13 +457,8 @@ namespace Voxel
             MeshRenderer renderer =
                 go.GetComponent<MeshRenderer>();
 
-            renderer.sharedMaterials =
-                new[]
-                {
-                    _runtimeBlockMaterial,
-                    _runtimeWaterMaterial
-                };
-
+            renderer.sharedMaterial =
+                _runtimeBlockMaterial;
             renderer.enabled = false;
 
             _meshFilters[coord] = filter;
@@ -943,12 +936,10 @@ namespace Voxel
             TotalMeshVertices +=
                 mesh.vertexCount;
 
-            for (int subMesh = 0;
-                 subMesh < mesh.subMeshCount;
-                 subMesh++)
+            if (mesh.subMeshCount > 0)
             {
                 TotalMeshTriangles +=
-                    (int)(mesh.GetIndexCount(subMesh) / 3);
+                    (int)(mesh.GetIndexCount(0) / 3);
             }
         }
 
@@ -965,12 +956,10 @@ namespace Voxel
             TotalMeshVertices -=
                 mesh.vertexCount;
 
-            for (int subMesh = 0;
-                 subMesh < mesh.subMeshCount;
-                 subMesh++)
+            if (mesh.subMeshCount > 0)
             {
                 TotalMeshTriangles -=
-                    (int)(mesh.GetIndexCount(subMesh) / 3);
+                    (int)(mesh.GetIndexCount(0) / 3);
             }
 
             TotalMeshVertices =
@@ -1124,60 +1113,6 @@ namespace Voxel
                 VoxelTextures.Atlas;
         }
 
-        private void EnsureRuntimeWaterMaterial()
-        {
-            if (_runtimeWaterMaterial != null ||
-                blockMaterial == null)
-                return;
-
-            _runtimeWaterMaterial =
-                new Material(blockMaterial);
-
-            _runtimeWaterMaterial.name =
-                blockMaterial.name +
-                " (Water Runtime)";
-
-            _runtimeWaterMaterial.mainTexture =
-                VoxelTextures.Atlas;
-
-            // URP Lit: прозрачный материал с альфа-смешиванием.
-            _runtimeWaterMaterial.SetFloat(
-                "_Surface",
-                1f);
-
-            _runtimeWaterMaterial.SetFloat(
-                "_Blend",
-                0f);
-
-            _runtimeWaterMaterial.SetFloat(
-                "_SrcBlend",
-                5f);
-
-            _runtimeWaterMaterial.SetFloat(
-                "_DstBlend",
-                10f);
-
-            _runtimeWaterMaterial.SetFloat(
-                "_ZWrite",
-                0f);
-
-            _runtimeWaterMaterial.SetColor(
-                "_BaseColor",
-                new Color(
-                    0.70f,
-                    0.85f,
-                    1f,
-                    0.72f));
-
-            _runtimeWaterMaterial.EnableKeyword(
-                "_SURFACE_TYPE_TRANSPARENT");
-
-            _runtimeWaterMaterial.DisableKeyword(
-                "_ALPHAPREMULTIPLY_ON");
-
-            _runtimeWaterMaterial.renderQueue = 3000;
-        }
-
         private void ResetPerformanceMetrics()
         {
             LastWorldGenerationMs = 0f;
@@ -1241,9 +1176,6 @@ namespace Voxel
         {
             if (_runtimeBlockMaterial != null)
                 Destroy(_runtimeBlockMaterial);
-
-            if (_runtimeWaterMaterial != null)
-                Destroy(_runtimeWaterMaterial);
         }
     }
 }
