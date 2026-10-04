@@ -731,6 +731,51 @@ namespace Voxel
             _chunks.Remove(coord);
         }
 
+        private void AddMeshMetrics(Mesh mesh)
+        {
+            if (mesh == null)
+                return;
+
+            TotalMeshVertices +=
+                mesh.vertexCount;
+
+            if (mesh.subMeshCount > 0)
+            {
+                TotalMeshTriangles +=
+                    (int)(mesh.GetIndexCount(0) / 3);
+            }
+        }
+
+        private void RemoveMeshMetrics(Vector2Int coord)
+        {
+            if (!_chunkMeshes.TryGetValue(
+                    coord,
+                    out Mesh mesh) ||
+                mesh == null)
+            {
+                return;
+            }
+
+            TotalMeshVertices -=
+                mesh.vertexCount;
+
+            if (mesh.subMeshCount > 0)
+            {
+                TotalMeshTriangles -=
+                    (int)(mesh.GetIndexCount(0) / 3);
+            }
+
+            TotalMeshVertices =
+                Mathf.Max(
+                    TotalMeshVertices,
+                    0);
+
+            TotalMeshTriangles =
+                Mathf.Max(
+                    TotalMeshTriangles,
+                    0);
+        }
+
         private int CountVisibleMeshesAroundPlayer()
         {
             int count = 0;
