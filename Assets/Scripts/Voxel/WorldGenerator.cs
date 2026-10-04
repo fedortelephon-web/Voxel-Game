@@ -13,10 +13,26 @@ namespace Voxel
         [SerializeField] private int seed = 1;
 
         [Header("Terrain")]
-        [SerializeField] private int baseHeight = 9;
-        [SerializeField] private int heightVariation = 9;
-        [SerializeField] private float terrainScale = 0.025f;
-        [SerializeField] private float detailScale = 0.08f;
+        [Tooltip("Средний уровень равнин.")]
+        [SerializeField] private int plainsHeight = 64;
+
+        [Tooltip("Ниже этой высоты рельеф считается океанической впадиной.")]
+        [SerializeField] private int oceanHeight = 50;
+
+        [Tooltip("С этой высоты начинаются горные биомы.")]
+        [SerializeField] private int mountainHeight = 88;
+
+        [Tooltip("Максимальная высота поверхности мира.")]
+        [SerializeField] private int maxTerrainHeight = 128;
+
+        [Tooltip("Размер крупных форм рельефа. Меньше = крупнее формы.")]
+        [SerializeField, Min(0.0001f)] private float terrainScale = 0.008f;
+
+        [Tooltip("Размер мелких деталей рельефа.")]
+        [SerializeField, Min(0.0001f)] private float detailScale = 0.035f;
+
+        [Tooltip("Размер горных массивов. Меньше = крупнее горы.")]
+        [SerializeField, Min(0.0001f)] private float mountainScale = 0.004f;
 
         [Header("Climate Noise")]
         [Tooltip("Размер температурных регионов. Меньше = крупнее регионы.")]
@@ -120,22 +136,24 @@ namespace Voxel
                         maxErosion,
                         climate.Erosion);
 
-                    BiomeDefinition biome =
-                        BiomeResolver.Resolve(climate);
-
-                    biomeCounts[(int)biome.Type]++;
-
-                    biomes[x, z] = biome;
-
                     int height = GetTerrainHeight(
                         worldX,
                         worldZ,
                         climate);
 
+                    BiomeDefinition biome =
+                        BiomeResolver.Resolve(
+                            climate,
+                            height);
+
+                    biomeCounts[(int)biome.Type]++;
+
+                    biomes[x, z] = biome;
+
                     height = Mathf.Clamp(
                         height,
                         1,
-                        ChunkData.SizeY - 1);
+                        maxTerrainHeight);
 
                     heights[x, z] = height;
 
@@ -168,7 +186,8 @@ namespace Voxel
                 $"Desert={biomeCounts[(int)BiomeType.Desert]}, " +
                 $"Taiga={biomeCounts[(int)BiomeType.Taiga]}, " +
                 $"Mountains={biomeCounts[(int)BiomeType.Mountains]}, " +
-                $"Swamp={biomeCounts[(int)BiomeType.Swamp]}. " +
+                $"Swamp={biomeCounts[(int)BiomeType.Swamp]}, " +
+                $"Ocean={biomeCounts[(int)BiomeType.Ocean]}. " +
                 $"Climate: " +
                 $"T={minTemperature:F2}-{maxTemperature:F2}, " +
                 $"H={minHumidity:F2}-{maxHumidity:F2}, " +
@@ -205,7 +224,7 @@ namespace Voxel
                 "========== BIOME MAP ==========");
 
             map.AppendLine(
-                "P=Plains F=Forest D=Desert T=Taiga M=Mountains S=Swamp");
+                "P=Plains F=Forest D=Desert T=Taiga M=Mountains S=Swamp O=Ocean");
 
             for (int z = maxZ - step; z >= minZ; z -= step)
             {
@@ -223,8 +242,15 @@ namespace Voxel
                         continentalnessScale,
                         erosionScale);
 
+                    int height = GetTerrainHeight(
+                        sampleX,
+                        sampleZ,
+                        climate);
+
                     BiomeDefinition biome =
-                        BiomeResolver.Resolve(climate);
+                        BiomeResolver.Resolve(
+                            climate,
+                            height);
 
                     map.Append(GetBiomeSymbol(biome.Type));
                 }
@@ -263,6 +289,9 @@ namespace Voxel
                 case BiomeType.Swamp:
                     return 'S';
 
+                case BiomeType.Ocean:
+                    return 'O';
+
                 default:
                     return '?';
             }
@@ -276,43 +305,71 @@ namespace Voxel
             int z,
             ClimatePoint climate)
         {
-            float offsetX = GetSeedOffset(seed, 0);
-            float offsetZ = GetSeedOffset(seed, 1);
+            float terrainOffsetX = GetSeedOffset(seed, 10);
+            float terrainOffsetZ = GetSeedOffset(seed, 11);
 
             float largeNoise = Mathf.PerlinNoise(
-                (x + offsetX) * terrainScale,
-                (z + offsetZ) * terrainScale
-            );
+                (x + terrainOffsetX) * terrainScale,
+                (z + terrainOffsetZ) * terrainScale);
 
-            float mediumNoise = Mathf.PerlinNoise(
-                (x + offsetX) * detailScale + 1000f,
-                (z + offsetZ) * detailScale + 1000f
-            );
+            float detailNoise = Mathf.PerlinNoise(
+                (x + terrainOffsetX) * detailScale + 1000f,
+                (z + terrainOffsetZ) * detailScale + 1000f);
 
-            float fineNoise = Mathf.PerlinNoise(
-                (x + offsetX) * detailScale * 2f + 2000f,
-                (z + offsetZ) * detailScale * 2f + 2000f
-            );
+            float mountainNoise = Mathf.PerlinNoise(
+                (x + terrainOffsetX) * mountainScale + 2000f,
+                (z + terrainOffsetZ) * mountainScale + 2000f);
 
-            float combinedNoise =
-                largeNoise * 0.60f +
-                mediumNoise * 0.25f +
-                fineNoise * 0.15f;
+            // Continentalness теперь формирует сами материки:
+            // низкие значения дают глубокие океанические впадины,
+            // высокие — сушу.
+            float landFactor = Mathf.SmoothStep(
+                0f,
+                1f,
+                Mathf.InverseLerp(
+                    0.30f,
+                    0.55f,
+                    climate.Continentalness));
 
-            float erosionStrength = Mathf.Lerp(
-                1.35f,
-                0.45f,
-                climate.Erosion);
+            float baseTerrain = Mathf.Lerp(
+                18f,
+                plainsHeight,
+                landFactor);
 
-            float continentalOffset =
-                (climate.Continentalness - 0.5f) * 6f;
+            // Небольшие холмы не должны ломать общую структуру мира.
+            float rollingTerrain =
+                (largeNoise - 0.5f) * 14f +
+                (detailNoise - 0.5f) * 6f;
 
-            return baseHeight + Mathf.RoundToInt(
-                (combinedNoise - 0.5f) *
-                heightVariation *
-                erosionStrength
-                + continentalOffset
-            );
+            // Низкая эрозия формирует горные массивы.
+            // Высота гор берётся именно из terrain height, а не из типа биома.
+            float mountainFactor =
+                landFactor *
+                Mathf.SmoothStep(
+                    0.55f,
+                    0.90f,
+                    1f - climate.Erosion);
+
+            float mountainShape =
+                Mathf.SmoothStep(
+                    0.45f,
+                    0.75f,
+                    mountainNoise);
+
+            float mountainElevation =
+                mountainFactor *
+                mountainShape *
+                66f;
+
+            int height = Mathf.RoundToInt(
+                baseTerrain +
+                rollingTerrain +
+                mountainElevation);
+
+            return Mathf.Clamp(
+                height,
+                1,
+                maxTerrainHeight);
         }
         /// <summary>
         /// Получить детерминированное смещение из seed.
