@@ -5,17 +5,21 @@ namespace Voxel
     /// </summary>
     public static class BiomeResolver
     {
-        public static BiomeDefinition Resolve(ClimatePoint climate)
+        public static BiomeDefinition Resolve(
+            ClimatePoint climate,
+            int height)
         {
-            if (climate.Continentalness > 0.62f &&
-                climate.Erosion < 0.38f)
-            {
-                return Get(BiomeType.Mountains);
-            }
+            // Сначала учитываем высоту рельефа.
+            // Низины — океаны, высокогорья — горы.
+            if (height < 50)
+                return Get(BiomeType.Ocean);
 
+            if (height >= 88)
+                return Get(BiomeType.Mountains);
+
+            // На равнинах и холмах биом зависит от климата.
             if (climate.Temperature > 0.68f &&
-                climate.Humidity < 0.40f &&
-                climate.Continentalness > 0.45f)
+                climate.Humidity < 0.40f)
             {
                 return Get(BiomeType.Desert);
             }
@@ -27,8 +31,8 @@ namespace Voxel
             }
 
             if (climate.Humidity > 0.75f &&
-                climate.Erosion > 0.55f &&
-                climate.Continentalness < 0.62f)
+                climate.Temperature > 0.35f &&
+                climate.Temperature < 0.72f)
             {
                 return Get(BiomeType.Swamp);
             }
