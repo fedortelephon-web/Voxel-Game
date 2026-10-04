@@ -27,7 +27,7 @@ namespace Voxel
                 surfaceBlock: BlockType.Grass,
                 fillerBlock: BlockType.Dirt,
                 dirtDepth: 3,
-                treeChance: 0.06f),
+                treeChance: 0.03f),
 
             new BiomeDefinition(
                 BiomeType.Desert,
@@ -49,7 +49,7 @@ namespace Voxel
                 surfaceBlock: BlockType.Grass,
                 fillerBlock: BlockType.Dirt,
                 dirtDepth: 3,
-                treeChance: 0.10f),
+                treeChance: 0.01f),
 
             new BiomeDefinition(
                 BiomeType.Mountains,
