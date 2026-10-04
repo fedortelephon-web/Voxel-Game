@@ -76,6 +76,17 @@ namespace Voxel
                 fillerBlock: BlockType.CraftingTable,
                 dirtDepth: 32,
                 treeChance: 0f),
+
+            new BiomeDefinition(
+                BiomeType.Ocean,
+                temperature: 0.50f,
+                humidity: 1.00f,
+                continentalness: 0.20f,
+                erosion: 0.50f,
+                surfaceBlock: BlockType.Sand,
+                fillerBlock: BlockType.Sand,
+                dirtDepth: 32,
+                treeChance: 0f),
         };
     }
 }
