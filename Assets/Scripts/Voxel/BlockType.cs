@@ -14,6 +14,8 @@ namespace Voxel
         Cobblestone = 8,
         Sand = 9,
         Water = 10,
+        Sand = 9,
+        Water = 10,
     }
 
     /// <summary>Тип инструмента.</summary>
