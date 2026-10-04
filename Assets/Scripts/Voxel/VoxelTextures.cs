@@ -70,6 +70,8 @@ namespace Voxel
                     return face == 2 ? TileId.CraftingTop : TileId.CraftingSide;
                 case BlockType.Sand:
                     return TileId.Sand;
+                case BlockType.Water:
+                    return TileId.Water;
                 default: return TileId.Stone;
             }
         }
