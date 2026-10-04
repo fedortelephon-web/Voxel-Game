@@ -57,6 +57,13 @@ namespace Voxel
         /// <summary>Текущий seed генератора.</summary>
         public int Seed => seed;
 
+        /// <summary>Изменить seed для следующей генерации мира.</summary>
+        public void SetSeed(int newSeed)
+        {
+            seed = newSeed;
+            Debug.Log($"WorldGenerator: установлен новый seed = {seed}");
+        }
+
         /// <summary>
         /// Сгенерировать чанк по его координатам в мире.
         /// </summary>
