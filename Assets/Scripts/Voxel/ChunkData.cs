@@ -4,7 +4,7 @@ namespace Voxel
     public class ChunkData
     {
         public const int SizeX = 16;
-        public const int SizeY = 32;
+        public const int SizeY = 129;
         public const int SizeZ = 16;
 
         private readonly BlockType[] _blocks = new BlockType[SizeX * SizeY * SizeZ];
