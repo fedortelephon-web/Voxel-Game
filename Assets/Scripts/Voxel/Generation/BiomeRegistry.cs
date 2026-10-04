@@ -1,0 +1,77 @@
+namespace Voxel
+{
+    /// <summary>
+    /// Все доступные биомы мира.
+    /// </summary>
+    public static class BiomeRegistry
+    {
+        public static readonly BiomeDefinition[] All =
+        {
+            new BiomeDefinition(
+                BiomeType.Plains,
+                temperature: 0.50f,
+                humidity: 0.45f,
+                continentalness: 0.55f,
+                erosion: 0.80f,
+                surfaceBlock: BlockType.Grass,
+                fillerBlock: BlockType.Dirt,
+                dirtDepth: 3,
+                treeChance: 0.025f),
+
+            new BiomeDefinition(
+                BiomeType.Forest,
+                temperature: 0.50f,
+                humidity: 0.78f,
+                continentalness: 0.55f,
+                erosion: 0.65f,
+                surfaceBlock: BlockType.Grass,
+                fillerBlock: BlockType.Dirt,
+                dirtDepth: 3,
+                treeChance: 0.09f),
+
+            new BiomeDefinition(
+                BiomeType.Desert,
+                temperature: 0.85f,
+                humidity: 0.15f,
+                continentalness: 0.65f,
+                erosion: 0.85f,
+                surfaceBlock: BlockType.Sand,
+                fillerBlock: BlockType.Sand,
+                dirtDepth: 3,
+                treeChance: 0f),
+
+            new BiomeDefinition(
+                BiomeType.Taiga,
+                temperature: 0.20f,
+                humidity: 0.65f,
+                continentalness: 0.55f,
+                erosion: 0.65f,
+                surfaceBlock: BlockType.Grass,
+                fillerBlock: BlockType.Dirt,
+                dirtDepth: 3,
+                treeChance: 0.06f),
+
+            new BiomeDefinition(
+                BiomeType.Mountains,
+                temperature: 0.35f,
+                humidity: 0.45f,
+                continentalness: 0.75f,
+                erosion: 0.10f,
+                surfaceBlock: BlockType.Grass,
+                fillerBlock: BlockType.Stone,
+                dirtDepth: 1,
+                treeChance: 0.015f),
+
+            new BiomeDefinition(
+                BiomeType.Swamp,
+                temperature: 0.65f,
+                humidity: 0.90f,
+                continentalness: 0.40f,
+                erosion: 0.90f,
+                surfaceBlock: BlockType.Grass,
+                fillerBlock: BlockType.Dirt,
+                dirtDepth: 4,
+                treeChance: 0.12f),
+        };
+    }
+}

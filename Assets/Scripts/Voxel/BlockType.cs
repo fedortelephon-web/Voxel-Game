@@ -12,6 +12,7 @@ namespace Voxel
         Planks = 6,
         CraftingTable = 7,
         Cobblestone = 8,
+        Sand = 9,
     }
 
     /// <summary>Тип инструмента.</summary>

@@ -13,16 +13,23 @@ namespace Voxel
         [SerializeField] private int seed = 12345;
 
         [Header("Terrain")]
-        [SerializeField] private int baseHeight = 8;
-        [SerializeField] private int heightVariation = 8;
-        [SerializeField] private float noiseScale = 0.06f;
+        [SerializeField] private int baseHeight = 9;
+        [SerializeField] private int heightVariation = 9;
+        [SerializeField] private float terrainScale = 0.025f;
+        [SerializeField] private float detailScale = 0.08f;
+
+        [Header("Climate")]
+        [SerializeField] private float temperatureScale = 0.02f;
+        [SerializeField] private float humidityScale = 0.018f;
+        [SerializeField] private float continentalnessScale = 0.012f;
+        [SerializeField] private float erosionScale = 0.03f;
 
         [Header("Layers")]
         [SerializeField] private int dirtDepth = 3;
 
         [Header("Trees")]
         [SerializeField] private bool generateTrees = true;
-        [SerializeField, Range(0f, 1f)] private float treeChance = 0.03f;
+
 
         /// <summary>Текущий seed генератора.</summary>
         public int Seed => seed;
@@ -42,8 +49,29 @@ namespace Voxel
                     int worldX = chunkX * ChunkData.SizeX + x;
                     int worldZ = chunkZ * ChunkData.SizeZ + z;
 
-                    int height = GetTerrainHeight(worldX, worldZ);
-                    height = Mathf.Clamp(height, 1, ChunkData.SizeY - 1);
+                    ClimatePoint climate = ClimateSampler.Sample(
+                        seed,
+                        worldX,
+                        worldZ,
+                        temperatureScale,
+                        humidityScale,
+                        continentalnessScale,
+                        erosionScale);
+
+                    BiomeDefinition biome =
+                        BiomeResolver.Resolve(climate);
+
+                    biomes[x, z] = biome;
+
+                    int height = GetTerrainHeight(
+                        worldX,
+                        worldZ,
+                        climate);
+
+                    height = Mathf.Clamp(
+                        height,
+                        1,
+                        ChunkData.SizeY - 1);
 
                     heights[x, z] = height;
 
@@ -53,11 +81,11 @@ namespace Voxel
 
                         if (y == height)
                         {
-                            type = BlockType.Grass;
+                            type = biome.SurfaceBlock;
                         }
-                        else if (y >= height - dirtDepth)
+                        else if (y >= height - biome.DirtDepth)
                         {
-                            type = BlockType.Dirt;
+                            type = biome.FillerBlock;
                         }
                         else
                         {
@@ -70,7 +98,12 @@ namespace Voxel
             }
 
             if (generateTrees)
-                PlantTrees(chunk, heights, chunkX, chunkZ);
+                PlantTrees(
+                    chunk,
+                    heights,
+                    biomes,
+                    chunkX,
+                    chunkZ);
 
             return chunk;
         }
@@ -78,29 +111,49 @@ namespace Voxel
         /// <summary>
         /// Рассчитать высоту поверхности по мировым координатам.
         /// </summary>
-        private int GetTerrainHeight(int x, int z)
+        private int GetTerrainHeight(
+            int x,
+            int z,
+            ClimatePoint climate)
         {
             float offsetX = GetSeedOffset(seed, 0);
             float offsetZ = GetSeedOffset(seed, 1);
 
-            float nx = (x + offsetX) * noiseScale;
-            float nz = (z + offsetZ) * noiseScale;
+            float largeNoise = Mathf.PerlinNoise(
+                (x + offsetX) * terrainScale,
+                (z + offsetZ) * terrainScale
+            );
 
-            float largeNoise = Mathf.PerlinNoise(nx, nz);
-            float smallNoise = Mathf.PerlinNoise(
-                nx * 2f + 100f,
-                nz * 2f + 100f
+            float mediumNoise = Mathf.PerlinNoise(
+                (x + offsetX) * detailScale + 1000f,
+                (z + offsetZ) * detailScale + 1000f
+            );
+
+            float fineNoise = Mathf.PerlinNoise(
+                (x + offsetX) * detailScale * 2f + 2000f,
+                (z + offsetZ) * detailScale * 2f + 2000f
             );
 
             float combinedNoise =
-                largeNoise * 0.75f +
-                smallNoise * 0.25f;
+                largeNoise * 0.60f +
+                mediumNoise * 0.25f +
+                fineNoise * 0.15f;
+
+            float erosionStrength = Mathf.Lerp(
+                1.35f,
+                0.45f,
+                climate.Erosion);
+
+            float continentalOffset =
+                (climate.Continentalness - 0.5f) * 6f;
 
             return baseHeight + Mathf.RoundToInt(
-                (combinedNoise - 0.5f) * heightVariation
+                (combinedNoise - 0.5f) *
+                heightVariation *
+                erosionStrength
+                + continentalOffset
             );
         }
-
         /// <summary>
         /// Получить детерминированное смещение из seed.
         /// </summary>
@@ -126,6 +179,7 @@ namespace Voxel
         private void PlantTrees(
             ChunkData chunk,
             int[,] heights,
+            BiomeDefinition[,] biomes,
             int chunkX,
             int chunkZ)
         {
@@ -136,7 +190,9 @@ namespace Voxel
             {
                 for (int z = 2; z < ChunkData.SizeZ - 2; z++)
                 {
-                    if (rng.NextDouble() > treeChance)
+                    BiomeDefinition biome = biomes[x, z];
+
+                    if (rng.NextDouble() > biome.TreeChance)
                         continue;
 
                     int top = heights[x, z] + 1;
