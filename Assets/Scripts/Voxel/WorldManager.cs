@@ -152,6 +152,23 @@ namespace Voxel
             foreach (Vector2Int coord in unload)
                 UnloadChunk(coord);
 
+            // Данные чанков остаются загруженными до loadDistance,
+            // но их меши нужны только внутри renderDistance.
+            var meshUnload = new List<Vector2Int>();
+
+            foreach (Vector2Int coord in _chunkMeshes.Keys)
+            {
+                if (!IsWithinRenderDistance(
+                        coord,
+                        playerChunk))
+                {
+                    meshUnload.Add(coord);
+                }
+            }
+
+            foreach (Vector2Int coord in meshUnload)
+                UnloadChunkMeshOnly(coord);
+
             // Очередь генерации сохраняется между перемещениями игрока.
             // Старые элементы, ставшие слишком далёкими, удаляем,
             // а новые чанки добавляем сверху в порядке близости.
@@ -756,6 +773,36 @@ namespace Voxel
             renderer.enabled = true;
 
             AddMeshMetrics(mesh);
+        }
+
+        private void UnloadChunkMeshOnly(
+            Vector2Int coord)
+        {
+            if (_chunkMeshes.TryGetValue(
+                    coord,
+                    out Mesh mesh))
+            {
+                RemoveMeshMetrics(coord);
+
+                if (mesh != null)
+                    Destroy(mesh);
+
+                _chunkMeshes.Remove(coord);
+            }
+
+            if (_meshFilters.TryGetValue(
+                    coord,
+                    out MeshFilter filter))
+            {
+                filter.sharedMesh = null;
+            }
+
+            if (_meshRenderers.TryGetValue(
+                    coord,
+                    out MeshRenderer renderer))
+            {
+                renderer.enabled = false;
+            }
         }
 
         private void UnloadChunk(
