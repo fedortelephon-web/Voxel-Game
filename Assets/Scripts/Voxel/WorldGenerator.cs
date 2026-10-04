@@ -225,8 +225,11 @@ namespace Voxel
                         waterLevel = oceanWaterLevel;
                     }
                     else if (biome.Type == BiomeType.Swamp &&
-                             height < swampWaterLevel)
+                             height < swampWaterLevel &&
+                             !IsNearOcean(worldX, worldZ, 2))
                     {
+                        // Болотные водоёмы не поднимаются выше уровня моря
+                        // вплотную к океанскому берегу.
                         waterLevel = swampWaterLevel;
                     }
 
@@ -960,6 +963,47 @@ namespace Voxel
             return BiomeResolver.Resolve(
                 climate,
                 biomeHeight);
+        }
+
+        /// <summary>
+        /// Проверяет, есть ли океан в заданном радиусе от мировой колонки.
+        /// Нужна защита береговой зоны от болотной воды на высоте выше моря.
+        /// </summary>
+        private bool IsNearOcean(
+            int worldX,
+            int worldZ,
+            int radius)
+        {
+            for (int dz = -radius; dz <= radius; dz++)
+            {
+                for (int dx = -radius; dx <= radius; dx++)
+                {
+                    if (dx == 0 && dz == 0)
+                        continue;
+
+                    int sampleX = worldX + dx;
+                    int sampleZ = worldZ + dz;
+
+                    ClimatePoint climate = ClimateSampler.Sample(
+                        seed,
+                        sampleX,
+                        sampleZ,
+                        temperatureScale,
+                        humidityScale,
+                        continentalnessScale,
+                        erosionScale);
+
+                    int neighborHeight = GetTerrainHeight(
+                        sampleX,
+                        sampleZ,
+                        climate);
+
+                    if (neighborHeight < oceanWaterLevel)
+                        return true;
+                }
+            }
+
+            return false;
         }
 
         /// <summary>
