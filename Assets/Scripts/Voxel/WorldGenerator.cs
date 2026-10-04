@@ -209,13 +209,13 @@ namespace Voxel
                     // На высоком рельефе река не прорезает гору насквозь.
                     bool riverCandidate =
                         terrainHeight > oceanWaterLevel &&
-                        terrainHeight <= oceanWaterLevel + 18 &&
+                        terrainHeight <= oceanWaterLevel + 40 &&
                         climate.Continentalness >= 0.42f &&
-                        riverStrength > 0.18f;
+                        riverStrength > 0.10f;
 
                     bool river =
                         riverCandidate &&
-                        riverStrength > 0.48f;
+                        riverStrength > 0.30f;
 
                     bool pond = false;
 
@@ -243,36 +243,29 @@ namespace Voxel
 
                     if (riverCandidate)
                     {
-                        // Сначала формируем широкую речную долину.
-                        // Чем ближе к центру riverStrength, тем ниже берег.
+                        // Формируем широкую пологую речную долину.
+                        // Берег плавно опускается к уровню моря ещё до воды.
                         float bankFactor = Mathf.SmoothStep(
-                            0.18f,
-                            0.58f,
+                            0.10f,
+                            0.30f,
                             riverStrength);
 
                         int bankTarget =
-                            oceanWaterLevel + 1;
+                            oceanWaterLevel;
 
-                        int bankHeight = Mathf.RoundToInt(
+                        height = Mathf.RoundToInt(
                             Mathf.Lerp(
                                 terrainHeight,
                                 bankTarget,
                                 bankFactor));
-
-                        height = Mathf.Min(
-                            terrainHeight,
-                            bankHeight);
                     }
 
                     if (river)
                     {
-                        // Дно ниже моря, а поверхность воды всегда ровно
-                        // на oceanWaterLevel. Это даёт связное русло.
-                        int riverBedDepth =
-                            riverStrength > 0.78f ? 3 : 2;
-
+                        // Дно находится чуть ниже уровня моря.
+                        // Поверхность реки всегда на одной отметке.
                         height = oceanWaterLevel -
-                                 riverBedDepth;
+                            (riverStrength > 0.72f ? 2 : 1);
                     }
                     else if (pond)
                     {
@@ -326,7 +319,21 @@ namespace Voxel
                     {
                         BlockType type;
 
-                        if (y == height)
+                        bool sandyRiverBed =
+                            riverCandidate &&
+                            height <= oceanWaterLevel + 2;
+
+                        bool sandyPondBed =
+                            pond &&
+                            height <= oceanWaterLevel + 3;
+
+                        if (sandyRiverBed || sandyPondBed)
+                        {
+                            type = y >= height - 2
+                                ? BlockType.Sand
+                                : BlockType.Stone;
+                        }
+                        else if (y == height)
                         {
                             type = biome.SurfaceBlock;
                         }
@@ -919,6 +926,7 @@ namespace Voxel
                         continue;
 
                     int terrainHeight;
+                    int baseTerrainHeight;
 
                     if (centerLocalX >= 0 &&
                         centerLocalX < ChunkData.SizeX &&
@@ -928,6 +936,20 @@ namespace Voxel
                         terrainHeight = heights[
                             centerLocalX,
                             centerLocalZ];
+
+                        ClimatePoint treeClimate = ClimateSampler.Sample(
+                            seed,
+                            worldX,
+                            worldZ,
+                            temperatureScale,
+                            humidityScale,
+                            continentalnessScale,
+                            erosionScale);
+
+                        baseTerrainHeight = GetTerrainHeight(
+                            worldX,
+                            worldZ,
+                            treeClimate);
                     }
                     else
                     {
@@ -940,10 +962,46 @@ namespace Voxel
                             continentalnessScale,
                             erosionScale);
 
-                        terrainHeight = GetTerrainHeight(
+                        baseTerrainHeight = GetTerrainHeight(
                             worldX,
                             worldZ,
                             climate);
+
+                        terrainHeight = baseTerrainHeight;
+                    }
+
+                    // Дерево никогда не ставим в русло или в сформированный
+                    // пруд. Это предотвращает стволы под водой и «висящие» кроны.
+                    float treeRiverStrength =
+                        HydrologySampler.GetRiverStrength(
+                            seed,
+                            worldX,
+                            worldZ,
+                            ClimateSampler.Sample(
+                                seed,
+                                worldX,
+                                worldZ,
+                                temperatureScale,
+                                humidityScale,
+                                continentalnessScale,
+                                erosionScale).Continentalness);
+
+                    if (treeRiverStrength > 0.10f &&
+                        baseTerrainHeight <= oceanWaterLevel + 40)
+                    {
+                        continue;
+                    }
+
+                    if (HydrologySampler.GetPondStrength(
+                            seed,
+                            worldX,
+                            worldZ) > 0.35f &&
+                        IsLocalLowland(
+                            worldX,
+                            worldZ,
+                            baseTerrainHeight))
+                    {
+                        continue;
                     }
 
                     int localX =
