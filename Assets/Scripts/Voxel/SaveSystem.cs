@@ -20,6 +20,12 @@ namespace Voxel
         private Transform _player;
         private float _saveTimer = -1f;
 
+        [SerializeField] private float autoSaveInterval = 5f;
+        private float _autoSaveTimer;
+
+        private Vector3 _lastSafePlayerPosition;
+        private bool _hasSafePlayerPosition;
+
         /// <summary>Формат сохранения.</summary>
         [Serializable]
         private class SaveData
@@ -49,32 +55,67 @@ namespace Voxel
                 enabled = false;
                 return;
             }
-
             _player = playerController.transform;
 
             _world.WorldChanged += RequestSave;
 
             Load();
-        }
 
+            if (IsSafePlayerPosition(_player.position))
+            {
+                _lastSafePlayerPosition = _player.position;
+                _hasSafePlayerPosition = true;
+            }
+            else
+            {
+                _lastSafePlayerPosition = new Vector3(8f, 12f, 8f);
+                _hasSafePlayerPosition = true;
+
+                _player.position = _lastSafePlayerPosition;
+
+                Debug.LogWarning(
+                    $"SaveSystem: позиция игрока была слишком высокой или некорректной. " +
+                    $"Игрок перемещён в безопасную точку {_lastSafePlayerPosition}.");
+            }
+
+            _autoSaveTimer = autoSaveInterval;
+        }
         private void Update()
         {
-            // Отложенное сохранение после изменений мира
+            if (IsSafePlayerPosition(_player.position))
+            {
+                _lastSafePlayerPosition = _player.position;
+                _hasSafePlayerPosition = true;
+            }
+
             if (_saveTimer > 0f)
             {
                 _saveTimer -= Time.deltaTime;
+
                 if (_saveTimer <= 0f)
                     DoSave();
             }
 
-            // Backspace — новая игра: удаляем сейв и пересоздаём мир
+            _autoSaveTimer -= Time.deltaTime;
+
+            if (_autoSaveTimer <= 0f)
+                DoSave();
+
             if (Input.GetKeyDown(KeyCode.Backspace))
             {
                 PlayerPrefs.DeleteKey(SaveKey);
+
                 _inventory.Clear();
                 _stats.ResetStats();
+
                 _world.Regenerate();
+
                 _player.position = new Vector3(8f, 12f, 8f);
+
+                _lastSafePlayerPosition = _player.position;
+                _hasSafePlayerPosition = true;
+
+                _autoSaveTimer = autoSaveInterval;
             }
         }
 
@@ -94,22 +135,56 @@ namespace Voxel
         {
             _saveTimer = saveDelay;
         }
+        
+        private static bool IsSafePlayerPosition(Vector3 position)
+        {
+            return
+                !float.IsNaN(position.x) &&
+                !float.IsNaN(position.y) &&
+                !float.IsNaN(position.z) &&
+                !float.IsInfinity(position.x) &&
+                !float.IsInfinity(position.y) &&
+                !float.IsInfinity(position.z) &&
+                position.y >= 0f &&
+                position.y <= ChunkData.SizeY + 8f;
+        }
+
 
         /// <summary>Собирает данные и пишет сейв немедленно.</summary>
         private void DoSave()
         {
             _saveTimer = -1f;
 
+            byte[] worldBytes = _world.GetBlocksBytes();
+
+            Vector3 positionToSave = _hasSafePlayerPosition
+                ? _lastSafePlayerPosition
+                : _player.position;
+
+            Debug.Log(
+                $"SaveSystem: сохраняю мир. " +
+                $"Байт: {worldBytes.Length}. " +
+                $"Позиция игрока: {positionToSave}");
+
             var data = new SaveData
             {
-                blocksBase64 = Convert.ToBase64String(_world.GetBlocksBytes()),
-                playerPosition = _player.position,
+                blocksBase64 = Convert.ToBase64String(worldBytes),
+                playerPosition = positionToSave,
             };
 
-            (data.slotTypes, data.slotCounts, data.selected) = _inventory.GetSaveData();
-            (data.health, data.hunger) = _stats.GetSaveStats();
-            PlayerPrefs.SetString(SaveKey, JsonUtility.ToJson(data));
+            (data.slotTypes, data.slotCounts, data.selected) =
+                _inventory.GetSaveData();
+
+            (data.health, data.hunger) =
+                _stats.GetSaveStats();
+
+            PlayerPrefs.SetString(
+                SaveKey,
+                JsonUtility.ToJson(data));
+
             PlayerPrefs.Save();
+
+            _autoSaveTimer = autoSaveInterval;
         }
 
         /// <summary>Загружает сейв, если он есть.</summary>

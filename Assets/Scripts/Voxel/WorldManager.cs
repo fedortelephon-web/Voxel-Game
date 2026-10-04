@@ -167,42 +167,68 @@ namespace Voxel
 
         /// <summary>Загрузить байты всех чанков и пересобрать меши.</summary>
         public bool SetBlocksBytes(byte[] data)
+{
+    int chunkSize =
+        ChunkData.SizeX *
+        ChunkData.SizeY *
+        ChunkData.SizeZ;
+
+    int expectedSize = _chunks.Count * chunkSize;
+
+    Debug.Log(
+        $"WorldManager: загрузка мира. " +
+        $"Получено байт: {data?.Length ?? -1}, " +
+        $"ожидалось: {expectedSize}, " +
+        $"чанков: {_chunks.Count}");
+
+    if (data == null || data.Length != expectedSize)
+        return false;
+
+    int offset = 0;
+
+    for (int chunkX = -WorldRadius; chunkX <= WorldRadius; chunkX++)
+    {
+        for (int chunkZ = -WorldRadius; chunkZ <= WorldRadius; chunkZ++)
         {
-            int chunkSize =
-                ChunkData.SizeX *
-                ChunkData.SizeY *
-                ChunkData.SizeZ;
+            Vector2Int coord = new Vector2Int(chunkX, chunkZ);
 
-            int expectedSize = _chunks.Count * chunkSize;
-
-            if (data == null || data.Length != expectedSize)
+            if (!_chunks.TryGetValue(coord, out ChunkData chunk))
                 return false;
 
-            int offset = 0;
+            byte[] chunkData = new byte[chunkSize];
+            Buffer.BlockCopy(data, offset, chunkData, 0, chunkSize);
 
-            for (int chunkX = -WorldRadius; chunkX <= WorldRadius; chunkX++)
+            if (!chunk.FromBytes(chunkData))
+                return false;
+
+            int nonAir = 0;
+
+            for (int y = 0; y < ChunkData.SizeY; y++)
             {
-                for (int chunkZ = -WorldRadius; chunkZ <= WorldRadius; chunkZ++)
+                for (int z = 0; z < ChunkData.SizeZ; z++)
                 {
-                    Vector2Int coord = new Vector2Int(chunkX, chunkZ);
-
-                    if (!_chunks.TryGetValue(coord, out ChunkData chunk))
-                        return false;
-
-                    byte[] chunkData = new byte[chunkSize];
-                    Buffer.BlockCopy(data, offset, chunkData, 0, chunkSize);
-
-                    if (!chunk.FromBytes(chunkData))
-                        return false;
-
-                    offset += chunkSize;
+                    for (int x = 0; x < ChunkData.SizeX; x++)
+                    {
+                        if (chunk.GetBlock(x, y, z) != BlockType.Air)
+                            nonAir++;
+                    }
                 }
             }
 
-            RebuildAllMeshes();
-            return true;
-        }
+            Debug.Log(
+                $"WorldManager: чанк ({chunkX}, {chunkZ}) " +
+                $"загружен. Непустых блоков: {nonAir}");
 
+            offset += chunkSize;
+        }
+    }
+
+    RebuildAllMeshes();
+
+    Debug.Log("WorldManager: все 9 чанков загружены и меши пересобраны.");
+
+    return true;
+}
         /// <summary>Перевести мировую координату в координату чанка.</summary>
         private static Vector2Int WorldToChunkCoord(Vector3Int worldPos)
         {
