@@ -7,7 +7,7 @@ namespace Voxel
     {
         GrassTop, GrassSide, Dirt, Stone, Cobblestone,
         LogSide, LogTop, Leaves, Planks,
-        CraftingTop, CraftingSide,
+        CraftingTop, CraftingSide, Sand,
         Count,
     }
 
@@ -68,6 +68,8 @@ namespace Voxel
                 case BlockType.Planks: return TileId.Planks;
                 case BlockType.CraftingTable:
                     return face == 2 ? TileId.CraftingTop : TileId.CraftingSide;
+                case BlockType.Sand:
+                    return TileId.Sand;
                 default: return TileId.Stone;
             }
         }
@@ -130,6 +132,7 @@ namespace Voxel
                 case TileId.Planks: Planks(px, stride, ox, oy, rng); break;
                 case TileId.CraftingTop: CraftingTop(px, stride, ox, oy, rng); break;
                 case TileId.CraftingSide: CraftingSide(px, stride, ox, oy, rng); break;
+                case TileId.Sand: Fill(px, stride, ox, oy, rng, Sands); break;
             }
         }
 
