@@ -24,8 +24,8 @@ namespace Voxel
         private readonly Dictionary<Vector2Int, Mesh> _chunkMeshes =
             new Dictionary<Vector2Int, Mesh>();
 
-        private const int WorldSizeX = 160;
-        private const int WorldSizeZ = 160;
+        private const int WorldSizeX = 32;
+        private const int WorldSizeZ = 32;
         private const int WorldMinChunkX = -WorldSizeX / 2;
         private const int WorldMinChunkZ = -WorldSizeZ / 2;
 
