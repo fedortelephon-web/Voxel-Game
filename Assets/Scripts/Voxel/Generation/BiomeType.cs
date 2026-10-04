@@ -11,5 +11,6 @@ namespace Voxel
         Taiga,
         Mountains,
         Swamp,
+    Ocean,
     }
 }
