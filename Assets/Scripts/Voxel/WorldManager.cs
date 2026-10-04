@@ -361,6 +361,19 @@ namespace Voxel
                 local.z);
         }
 
+        /// <summary>
+        /// Получить биомный оттенок растительности через генератор мира.
+        /// Кэширование выполняется внутри WorldGenerator.
+        /// </summary>
+        public Color GetVegetationTint(
+            int worldX,
+            int worldZ)
+        {
+            return worldGenerator.GetVegetationTint(
+                worldX,
+                worldZ);
+        }
+
         public bool InBounds(Vector3Int worldPos)
         {
             if (worldPos.y < 0 ||
