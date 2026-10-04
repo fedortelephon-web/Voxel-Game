@@ -43,6 +43,8 @@ namespace Voxel
 
         private void Start()
         {
+            Debug.Log("========== SaveSystem START ==========");
+
             _world = FindObjectOfType<WorldManager>();
             _inventory = FindObjectOfType<InventorySystem>();
             _stats = FindObjectOfType<SurvivalStats>();
@@ -100,9 +102,11 @@ namespace Voxel
 
             if (_autoSaveTimer <= 0f)
                 DoSave();
-
             if (Input.GetKeyDown(KeyCode.Backspace))
             {
+                Debug.LogWarning(
+                    "SaveSystem: НАЖАТ BACKSPACE — сохранение удаляется!");
+
                 PlayerPrefs.DeleteKey(SaveKey);
 
                 _inventory.Clear();
@@ -188,74 +192,126 @@ namespace Voxel
         }
 
         /// <summary>Загружает сейв, если он есть.</summary>
-        private void Load()
+private void Load()
+{
+    Debug.Log(
+        $"SaveSystem: LOAD start. " +
+        $"SaveKey = {SaveKey}, " +
+        $"HasKey = {PlayerPrefs.HasKey(SaveKey)}");
+
+    if (!PlayerPrefs.HasKey(SaveKey))
+    {
+        Debug.LogWarning(
+            "SaveSystem: сохранение НЕ найдено в PlayerPrefs.");
+        return;
+    }
+
+    try
+    {
+        var json = PlayerPrefs.GetString(SaveKey);
+
+        Debug.Log(
+            $"SaveSystem: сейв найден. " +
+            $"Длина JSON: {json.Length}");
+
+        var data = JsonUtility.FromJson<SaveData>(json);
+
+        if (data == null)
         {
-            if (!PlayerPrefs.HasKey(SaveKey))
-                return;
-
-            try
-            {
-                var json = PlayerPrefs.GetString(SaveKey);
-                var data = JsonUtility.FromJson<SaveData>(json);
-
-                if (data == null || string.IsNullOrEmpty(data.blocksBase64))
-                {
-                    Debug.LogWarning("SaveSystem: сохранение повреждено или пустое.");
-                    return;
-                }
-
-                byte[] blockBytes = Convert.FromBase64String(data.blocksBase64);
-
-                const int WorldChunkCount = 9;
-
-                int expectedBlockBytes =
-                    ChunkData.SizeX *
-                    ChunkData.SizeY *
-                    ChunkData.SizeZ *
-                    WorldChunkCount;
-
-                if (blockBytes.Length != expectedBlockBytes)
-                {
-                    Debug.LogWarning(
-                        $"SaveSystem: неверный размер данных мира: " +
-                        $"{blockBytes.Length}, ожидалось {expectedBlockBytes}.");
-                    return;
-                }
-
-                if (!_inventory.IsValidSaveData(
-                        data.slotTypes,
-                        data.slotCounts,
-                        data.selected))
-                {
-                    Debug.LogWarning("SaveSystem: данные инвентаря повреждены.");
-                    return;
-                }
-
-                if (!_world.SetBlocksBytes(blockBytes))
-                {
-                    Debug.LogError(
-                        $"SaveSystem: не удалось загрузить данные мира. " +
-                        $"Получено байт: {blockBytes.Length}.");
-                    return;
-                }
-
-                Debug.Log($"SaveSystem: загружена позиция игрока {data.playerPosition}");
-                _player.position = data.playerPosition;
-                if (!_inventory.ApplySaveData(
-                        data.slotTypes,
-                        data.slotCounts,
-                        data.selected))
-                {
-                    Debug.LogWarning("SaveSystem: не удалось загрузить инвентарь.");
-                    return;
-                }
-
-                _stats.ApplySaveStats(data.health, data.hunger);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"SaveSystem: ошибка загрузки сохранения: {e.Message}");
-            }
+            Debug.LogWarning("SaveSystem: FromJson вернул null.");
+            return;
         }
+
+        if (string.IsNullOrEmpty(data.blocksBase64))
+        {
+            Debug.LogWarning(
+                "SaveSystem: blocksBase64 отсутствует или пуст.");
+            return;
+        }
+
+        Debug.Log(
+            $"SaveSystem: JSON разобран. " +
+            $"blocksBase64 длина: {data.blocksBase64.Length}");
+
+        byte[] blockBytes = Convert.FromBase64String(data.blocksBase64);
+
+        Debug.Log(
+            $"SaveSystem: Base64 декодирован. " +
+            $"Байт мира: {blockBytes.Length}");
+
+        const int WorldChunkCount = 9;
+
+        int expectedBlockBytes =
+            ChunkData.SizeX *
+            ChunkData.SizeY *
+            ChunkData.SizeZ *
+            WorldChunkCount;
+
+        if (blockBytes.Length != expectedBlockBytes)
+        {
+            Debug.LogWarning(
+                $"SaveSystem: неверный размер данных мира. " +
+                $"Получено: {blockBytes.Length}, " +
+                $"ожидалось: {expectedBlockBytes}");
+            return;
+        }
+
+        Debug.Log("SaveSystem: размер мира корректный.");
+
+        bool inventoryValid = _inventory.IsValidSaveData(
+            data.slotTypes,
+            data.slotCounts,
+            data.selected);
+
+        Debug.Log(
+            $"SaveSystem: проверка инвентаря: {inventoryValid}");
+
+        if (!inventoryValid)
+        {
+            Debug.LogWarning(
+                "SaveSystem: данные инвентаря повреждены.");
+            return;
+        }
+
+        Debug.Log(
+            "SaveSystem: вызываю WorldManager.SetBlocksBytes().");
+
+        if (!_world.SetBlocksBytes(blockBytes))
+        {
+            Debug.LogError(
+                $"SaveSystem: не удалось загрузить данные мира. " +
+                $"Получено байт: {blockBytes.Length}.");
+            return;
+        }
+
+        Debug.Log(
+            $"SaveSystem: загружена позиция игрока " +
+            $"{data.playerPosition}");
+
+        _player.position = data.playerPosition;
+
+        if (!_inventory.ApplySaveData(
+            data.slotTypes,
+            data.slotCounts,
+            data.selected))
+        {
+            Debug.LogWarning(
+                "SaveSystem: не удалось загрузить инвентарь.");
+            return;
+        }
+
+        _stats.ApplySaveStats(
+            data.health,
+            data.hunger);
+
+        Debug.Log(
+            "SaveSystem: LOAD успешно завершён.");
+    }
+    catch (Exception e)
+    {
+        Debug.LogError(
+            $"SaveSystem: ошибка загрузки сохранения: {e}");
+    }
+}
     }
 }

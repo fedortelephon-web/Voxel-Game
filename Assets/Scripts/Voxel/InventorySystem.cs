@@ -228,7 +228,17 @@ public class InventorySystem : MonoBehaviour
         type = SelectedItem;
         if (type == ItemType.None)
             return false;
-        _counts[HotbarStart + _selected]--;
+
+        int index = HotbarStart + _selected;
+
+        _counts[index]--;
+
+        if (_counts[index] <= 0)
+        {
+            _counts[index] = 0;
+            _slots[index] = ItemType.None;
+        }
+
         return true;
     }
 
