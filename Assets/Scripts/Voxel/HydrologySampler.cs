@@ -74,15 +74,24 @@ namespace Voxel
                 RiverMaxHalfWidth,
                 widthNoise);
 
-            // Переводим distance в плавную маску.
-            float width01 =
-                Mathf.Clamp01(centerDistance / 0.12f);
+            // Чем шире конкретная река, тем дальше от её центральной
+            // изолинии начинается берег. Маска остаётся непрерывной.
+            float normalizedWidth =
+                Mathf.InverseLerp(
+                    RiverMinHalfWidth,
+                    RiverMaxHalfWidth,
+                    halfWidth);
+
+            float widthThreshold = Mathf.Lerp(
+                0.065f,
+                0.14f,
+                normalizedWidth);
 
             float strength =
                 1f - Mathf.SmoothStep(
-                    0f,
-                    1f,
-                    width01);
+                    0.015f,
+                    widthThreshold,
+                    centerDistance);
 
             // Континентальный low-frequency mask ограничивает частоту рек,
             // но не разрывает русло на отдельные точки.
@@ -97,19 +106,6 @@ namespace Voxel
                     basinNoise);
 
             strength *= basinFactor;
-
-            // Дополнительная коррекция ширины:
-            // более высокий halfWidth даёт более мягкие берега.
-            float normalizedWidth =
-                Mathf.InverseLerp(
-                    RiverMinHalfWidth,
-                    RiverMaxHalfWidth,
-                    halfWidth);
-
-            strength *= Mathf.Lerp(
-                0.92f,
-                1.0f,
-                normalizedWidth);
 
             return Mathf.Clamp01(strength);
         }
