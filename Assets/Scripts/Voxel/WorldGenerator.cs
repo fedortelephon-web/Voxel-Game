@@ -1043,7 +1043,10 @@ namespace Voxel
                 height);
 
             if (height < oceanWaterLevel)
+            {
+                biomeCache[key] = BiomeType.Ocean;
                 return GetBiome(BiomeType.Ocean);
+            }
 
             biomeHeight = Mathf.Max(
                 biomeHeight,
