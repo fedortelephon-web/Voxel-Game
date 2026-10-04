@@ -19,10 +19,10 @@ namespace Voxel
         [SerializeField] private float detailScale = 0.08f;
 
         [Header("Climate")]
-        [SerializeField] private float temperatureScale = 0.02f;
-        [SerializeField] private float humidityScale = 0.018f;
-        [SerializeField] private float continentalnessScale = 0.012f;
-        [SerializeField] private float erosionScale = 0.03f;
+        [SerializeField] private float temperatureScale = 0.07f;
+        [SerializeField] private float humidityScale = 0.065f;
+        [SerializeField] private float continentalnessScale = 0.04f;
+        [SerializeField] private float erosionScale = 0.06f;
 
         [Header("Layers")]
         [SerializeField] private int dirtDepth = 3;
