@@ -7,7 +7,7 @@ namespace Voxel
     {
         GrassTop, GrassSide, Dirt, Stone, Cobblestone,
         LogSide, LogTop, Leaves, Planks,
-        CraftingTop, CraftingSide, Sand,
+        CraftingTop, CraftingSide, Sand, Water,
         Count,
     }
 
@@ -133,6 +133,7 @@ namespace Voxel
                 case TileId.CraftingTop: CraftingTop(px, stride, ox, oy, rng); break;
                 case TileId.CraftingSide: CraftingSide(px, stride, ox, oy, rng); break;
                 case TileId.Sand: Fill(px, stride, ox, oy, rng, Sands); break;
+                case TileId.Water: Fill(px, stride, ox, oy, rng, WaterBlues); break;
             }
         }
 
@@ -340,6 +341,14 @@ namespace Voxel
             new Color(0.88f, 0.80f, 0.55f),
             new Color(0.76f, 0.68f, 0.44f),
             new Color(0.85f, 0.77f, 0.52f),
+        };
+
+        private static readonly Color[] WaterBlues =
+        {
+            new Color(0.20f, 0.50f, 0.72f),
+            new Color(0.24f, 0.56f, 0.78f),
+            new Color(0.17f, 0.45f, 0.67f),
+            new Color(0.28f, 0.60f, 0.80f),
         };
     }
 }
