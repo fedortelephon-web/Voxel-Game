@@ -479,17 +479,17 @@ namespace Voxel
             switch (type)
             {
                 case BiomeType.Forest:
-                    return new Color(0.78f, 1.00f, 0.72f);
+                    return new Color(0.45f, 1.00f, 0.30f);
                 case BiomeType.Plains:
-                    return new Color(1.00f, 1.00f, 1.00f);
+                    return new Color(1.00f, 0.95f, 0.68f);
                 case BiomeType.Taiga:
-                    return new Color(0.72f, 0.88f, 1.00f);
+                    return new Color(0.42f, 0.72f, 0.95f);
                 case BiomeType.Desert:
-                    return new Color(1.00f, 0.94f, 0.68f);
+                    return new Color(1.00f, 0.90f, 0.55f);
                 case BiomeType.Swamp:
-                    return new Color(0.68f, 0.92f, 0.58f);
+                    return new Color(0.40f, 0.72f, 0.30f);
                 case BiomeType.Mountains:
-                    return new Color(0.86f, 0.94f, 0.82f);
+                    return new Color(0.75f, 0.88f, 0.72f);
                 default:
                     return Color.white;
             }
@@ -656,7 +656,7 @@ namespace Voxel
         {
             // Проверяем также несколько колонок за пределами чанка.
             // Это нужно потому, что крона дерева может заходить в соседний чанк.
-            const int FeatureRadius = 2;
+            const int FeatureRadius = 3;
 
             int minWorldX = chunkX * ChunkData.SizeX - FeatureRadius;
             int maxWorldX = chunkX * ChunkData.SizeX +
@@ -769,9 +769,11 @@ namespace Voxel
                             break;
 
                         case BiomeType.Taiga:
-                            trunk = 7 + rng.Next(0, 3);
-                            canopyRadius = 2;
-                            canopyBottom = 3;
+                            // Тайга — хвойные деревья: высокие ели
+                            // с ярусной конической кроной.
+                            trunk = 8 + rng.Next(0, 4);
+                            canopyRadius = 3;
+                            canopyBottom = 2;
                             break;
 
                         case BiomeType.Swamp:
@@ -880,13 +882,31 @@ namespace Voxel
 
                         if (biome.Type == BiomeType.Taiga)
                         {
-                            radius = Mathf.Max(
-                                1,
+                            // Ярусная крона: широкие нижние ветви,
+                            // более узкие верхние и отдельная верхушка.
+                            float taigaProgress = Mathf.InverseLerp(
+                                canopyBottom,
+                                trunk - 1,
+                                dy);
+
+                            radius = Mathf.Clamp(
                                 Mathf.RoundToInt(
                                     Mathf.Lerp(
-                                        2f,
+                                        canopyRadius,
                                         1f,
-                                        t)));
+                                        taigaProgress)),
+                                1,
+                                canopyRadius);
+
+                            // Дополнительные ярусы ветвей делают силуэт
+                            // похожим именно на ель, а не на обычное дерево.
+                            if (dy < trunk &&
+                                (dy - canopyBottom) % 2 == 0)
+                            {
+                                radius = Mathf.Min(
+                                    canopyRadius,
+                                    radius + 1);
+                            }
 
                             if (dy == trunk)
                                 radius = 0;
