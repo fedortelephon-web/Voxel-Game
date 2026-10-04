@@ -46,6 +46,13 @@ namespace Voxel
             }
 
             RebuildAllMeshes();
+
+            worldGenerator.LogBiomeMap(
+                -WorldRadius * ChunkData.SizeX,
+                (WorldRadius + 1) * ChunkData.SizeX,
+                -WorldRadius * ChunkData.SizeZ,
+                (WorldRadius + 1) * ChunkData.SizeZ,
+                4);
         }
 
         /// <summary>Создать один чанк и его объект в сцене.</summary>

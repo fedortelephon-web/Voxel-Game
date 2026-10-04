@@ -19,10 +19,10 @@ namespace Voxel
         [SerializeField] private float detailScale = 0.08f;
 
         [Header("Climate")]
-        [SerializeField] private float temperatureScale = 0.07f;
-        [SerializeField] private float humidityScale = 0.065f;
-        [SerializeField] private float continentalnessScale = 0.04f;
-        [SerializeField] private float erosionScale = 0.06f;
+        [SerializeField] private float temperatureScale = 0.01f;
+        [SerializeField] private float humidityScale = 0.009f;
+        [SerializeField] private float continentalnessScale = 0.006f;
+        [SerializeField] private float erosionScale = 0.012f;
 
         [Header("Layers")]
         [SerializeField] private int dirtDepth = 3;
@@ -177,6 +177,88 @@ namespace Voxel
                     chunkZ);
 
             return chunk;
+        }
+
+        /// <summary>
+        /// Вывести в Console карту биомов по мировым координатам.
+        /// Один символ показывает участок мира размером step × step блоков.
+        /// </summary>
+        public void LogBiomeMap(
+            int minX,
+            int maxX,
+            int minZ,
+            int maxZ,
+            int step)
+        {
+            step = Mathf.Max(step, 1);
+
+            var map = new System.Text.StringBuilder();
+
+            map.AppendLine(
+                "========== BIOME MAP ==========");
+
+            map.AppendLine(
+                "P=Plains F=Forest D=Desert T=Taiga M=Mountains S=Swamp");
+
+            for (int z = maxZ - step; z >= minZ; z -= step)
+            {
+                for (int x = minX; x < maxX; x += step)
+                {
+                    int sampleX = x + step / 2;
+                    int sampleZ = z + step / 2;
+
+                    ClimatePoint climate = ClimateSampler.Sample(
+                        seed,
+                        sampleX,
+                        sampleZ,
+                        temperatureScale,
+                        humidityScale,
+                        continentalnessScale,
+                        erosionScale);
+
+                    BiomeDefinition biome =
+                        BiomeResolver.Resolve(climate);
+
+                    map.Append(GetBiomeSymbol(biome.Type));
+                }
+
+                map.AppendLine();
+            }
+
+            map.AppendLine(
+                "================================");
+
+            Debug.Log(map.ToString());
+        }
+
+        /// <summary>
+        /// Символ для карты биомов.
+        /// </summary>
+        private static char GetBiomeSymbol(BiomeType type)
+        {
+            switch (type)
+            {
+                case BiomeType.Plains:
+                    return 'P';
+
+                case BiomeType.Forest:
+                    return 'F';
+
+                case BiomeType.Desert:
+                    return 'D';
+
+                case BiomeType.Taiga:
+                    return 'T';
+
+                case BiomeType.Mountains:
+                    return 'M';
+
+                case BiomeType.Swamp:
+                    return 'S';
+
+                default:
+                    return '?';
+            }
         }
 
         /// <summary>

@@ -22,6 +22,7 @@ namespace Voxel
         StoneShovel,
         WoodenSword,
         StoneSword,
+        Sand,
     }
 
     /// <summary>Преобразования между блоками и предметами.</summary>
@@ -40,6 +41,7 @@ namespace Voxel
                 case BlockType.Leaves: return roll < 0.25f ? ItemType.Apple : ItemType.None;
                 case BlockType.Planks: return ItemType.Planks;
                 case BlockType.CraftingTable: return ItemType.CraftingTable;
+                case BlockType.Sand: return ItemType.Sand;
                 default: return ItemType.None;
             }
         }
@@ -57,6 +59,7 @@ namespace Voxel
                 case ItemType.Planks: return BlockType.Planks;
                 case ItemType.CraftingTable: return BlockType.CraftingTable;
                 case ItemType.Cobblestone: return BlockType.Cobblestone;
+                case ItemType.Sand: return BlockType.Sand;
                 default: return BlockType.Air;
             }
         }
@@ -76,6 +79,7 @@ namespace Voxel
                 case ItemType.Stick: return "Палка";
                 case ItemType.CraftingTable: return "Верстак";
                 case ItemType.Cobblestone: return "Булыжник";
+                case ItemType.Sand: return "Песок";
                 case ItemType.WoodenPickaxe: return "Деревянная кирка";
                 case ItemType.StonePickaxe: return "Каменная кирка";
                 case ItemType.WoodenAxe: return "Деревянный топор";
