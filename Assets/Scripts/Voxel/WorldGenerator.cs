@@ -761,6 +761,14 @@ namespace Voxel
                                 localZ,
                                 BlockType.Wood);
                         }
+
+                        // Верхний блок ствола скрываем листвой,
+                        // чтобы ствол не торчал из верхушки кроны.
+                        chunk.SetBlock(
+                            localX,
+                            top + trunk - 1,
+                            localZ,
+                            BlockType.Leaves);
                     }
 
                     // Листва генерируется всеми чанками, на которые она
