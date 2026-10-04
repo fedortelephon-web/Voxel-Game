@@ -294,7 +294,7 @@ namespace Voxel
             if (!_meshFilters.TryGetValue(coord, out MeshFilter meshFilter))
                 return;
 
-            Mesh newMesh = ChunkMesher.BuildMesh(chunk);
+            Mesh newMesh = ChunkMesher.BuildMesh(chunk, worldGenerator, coord.x, coord.y);
 
             if (_chunkMeshes.TryGetValue(coord, out Mesh oldMesh))
             {
