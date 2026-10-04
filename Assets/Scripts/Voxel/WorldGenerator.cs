@@ -712,6 +712,29 @@ namespace Voxel
                             canopyBottom = 2;
                             break;
 
+                        case BiomeType.Plains:
+                            // На равнинах деревья редкие, но сильно различаются
+                            // по размеру и форме кроны.
+                            if (rng.NextDouble() < 0.45f)
+                            {
+                                trunk = 3 + rng.Next(0, 2);
+                                canopyRadius = 1;
+                                canopyBottom = 2;
+                            }
+                            else if (rng.NextDouble() < 0.70f)
+                            {
+                                trunk = 5 + rng.Next(0, 3);
+                                canopyRadius = 2;
+                                canopyBottom = 2;
+                            }
+                            else
+                            {
+                                trunk = 7 + rng.Next(0, 3);
+                                canopyRadius = 3;
+                                canopyBottom = 3;
+                            }
+                            break;
+
                         default:
                             trunk = 4;
                             canopyRadius = 1;
@@ -753,6 +776,17 @@ namespace Voxel
                             dy);
 
                         int radius = canopyRadius;
+
+                        if (biome.Type == BiomeType.Plains)
+                        {
+                            // Разная форма кроны по высоте:
+                            // маленькие деревья компактные, большие шире.
+                            if (trunk >= 7 && dy <= canopyBottom + 1)
+                                radius = Mathf.Min(radius, 2);
+
+                            if (trunk <= 4)
+                                radius = 1;
+                        }
 
                         if (biome.Type == BiomeType.Taiga)
                         {
