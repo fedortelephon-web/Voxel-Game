@@ -162,7 +162,7 @@ namespace Voxel
                 Vector3 p = player.position;
 
                 GUILayout.Label(
-                    $"Player: X {p.x:F1}  Z {p.z:F1}",
+                    $"Player: X {p.x:F1}  Y {p.y:F1}  Z {p.z:F1}",
                     labelStyle);
             }
 
