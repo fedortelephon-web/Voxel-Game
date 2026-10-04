@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Voxel
@@ -65,6 +66,21 @@ namespace Voxel
         [Header("Trees")]
         [SerializeField] private bool generateTrees = false;
 
+        // Биом и итоговый оттенок кэшируются по мировой колонке X/Z.
+        // Это критично для WebGL: ChunkMesher может запрашивать один и тот же
+        // цвет много раз для разных граней дерева/листвы.
+        private readonly Dictionary<long, BiomeType> biomeCache =
+            new Dictionary<long, BiomeType>(32768);
+
+        private readonly Dictionary<long, Color> vegetationTintCache =
+            new Dictionary<long, Color>(32768);
+
+        private int cacheSeed;
+        private bool cacheSeedInitialized;
+
+        private const int VegetationTintRadius = 15;
+        private const int VegetationTintSampleStep = 5;
+
 
         /// <summary>Текущий seed генератора.</summary>
         public int Seed => seed;
@@ -73,6 +89,7 @@ namespace Voxel
         public void SetSeed(int newSeed)
         {
             seed = newSeed;
+            ClearGenerationCaches();
             Debug.Log($"WorldGenerator: установлен новый seed = {seed}");
         }
 
@@ -81,6 +98,8 @@ namespace Voxel
         /// </summary>
         public ChunkData GenerateChunk(int chunkX, int chunkZ)
         {
+            EnsureGenerationCaches();
+
             Debug.Log(
                 $"WorldGenerator: генерация чанка ({chunkX}, {chunkZ}). " +
                 $"Seed={seed}, " +
@@ -188,6 +207,7 @@ namespace Voxel
                     biomeCounts[(int)biome.Type]++;
 
                     biomes[x, z] = biome;
+                    biomeCache[GetWorldColumnKey(worldX, worldZ)] = biome.Type;
 
                     height = Mathf.Clamp(
                         height,
@@ -436,42 +456,60 @@ namespace Voxel
         /// </summary>
         public Color GetVegetationTint(int worldX, int worldZ)
         {
-            // Смешиваем цвета по ближайшим 15 блокам, чтобы граница биомов
-            // переходила постепенно и без резкой полосы.
-            const int radius = 15;
+            EnsureGenerationCaches();
+
+            long key = GetWorldColumnKey(worldX, worldZ);
+
+            if (vegetationTintCache.TryGetValue(
+                    key,
+                    out Color cachedTint))
+            {
+                return cachedTint;
+            }
+
+            // Сохраняем визуальную ширину перехода 15 блоков,
+            // но не просчитываем каждый из ~709 блоков вокруг каждой
+            // вершины. Достаточно сетки с шагом 5: 7×7 = максимум 49
+            // образцов на уникальную мировую колонку.
             Color sum = Color.black;
-            int count = 0;
-
-            for (int dz = -radius; dz <= radius; dz++)
-            for (int dx = -radius; dx <= radius; dx++)
-            {
-                BiomeDefinition biome = GetBiomeAtWorldPosition(
-                    worldX + dx,
-                    worldZ + dz);
-
-                float distance = Mathf.Sqrt(dx * dx + dz * dz);
-                if (distance > radius)
-                    continue;
-
-                float weight = 1f - distance / radius;
-                sum += GetBaseVegetationTint(biome.Type) * weight;
-                count += 1;
-            }
-
-            if (count == 0)
-                return Color.white;
-
-            // Нормализуем по весам повторно, чтобы оттенок не темнел
-            // около границ мира.
             float weightSum = 0f;
-            for (int dz = -radius; dz <= radius; dz++)
-            for (int dx = -radius; dx <= radius; dx++)
+
+            for (int dz = -VegetationTintRadius;
+                 dz <= VegetationTintRadius;
+                 dz += VegetationTintSampleStep)
             {
-                if (dx * dx + dz * dz <= radius * radius)
-                    weightSum += 1f - Mathf.Sqrt(dx * dx + dz * dz) / radius;
+                for (int dx = -VegetationTintRadius;
+                     dx <= VegetationTintRadius;
+                     dx += VegetationTintSampleStep)
+                {
+                    int distanceSquared = dx * dx + dz * dz;
+
+                    if (distanceSquared >
+                        VegetationTintRadius * VegetationTintRadius)
+                    {
+                        continue;
+                    }
+
+                    float distance = Mathf.Sqrt(distanceSquared);
+                    float weight =
+                        1f - distance / VegetationTintRadius;
+
+                    BiomeType biomeType =
+                        GetCachedBiomeTypeAtWorldPosition(
+                            worldX + dx,
+                            worldZ + dz);
+
+                    sum += GetBaseVegetationTint(biomeType) * weight;
+                    weightSum += weight;
+                }
             }
 
-            return sum / Mathf.Max(0.001f, weightSum);
+            Color tint = weightSum > 0.001f
+                ? sum / weightSum
+                : Color.white;
+
+            vegetationTintCache[key] = tint;
+            return tint;
         }
 
         private static Color GetBaseVegetationTint(BiomeType type)
@@ -959,10 +997,32 @@ namespace Voxel
         /// Получить биом в произвольной мировой колонке.
         /// Используется для генерации особенностей, которые пересекают границы чанков.
         /// </summary>
+        private BiomeType GetCachedBiomeTypeAtWorldPosition(
+            int worldX,
+            int worldZ)
+        {
+            EnsureGenerationCaches();
+
+            long key = GetWorldColumnKey(worldX, worldZ);
+
+            if (biomeCache.TryGetValue(key, out BiomeType cachedBiome))
+                return cachedBiome;
+
+            BiomeDefinition biome = GetBiomeAtWorldPosition(worldX, worldZ);
+            return biome.Type;
+        }
+
         private BiomeDefinition GetBiomeAtWorldPosition(
             int worldX,
             int worldZ)
         {
+            EnsureGenerationCaches();
+
+            long key = GetWorldColumnKey(worldX, worldZ);
+
+            if (biomeCache.TryGetValue(key, out BiomeType cachedBiome))
+                return GetBiome(cachedBiome);
+
             ClimatePoint climate = ClimateSampler.Sample(
                 seed,
                 worldX,
@@ -989,9 +1049,33 @@ namespace Voxel
                 biomeHeight,
                 oceanWaterLevel);
 
-            return BiomeResolver.Resolve(
+            BiomeDefinition biome = BiomeResolver.Resolve(
                 climate,
                 biomeHeight);
+
+            biomeCache[key] = biome.Type;
+            return biome;
+        }
+
+        private static long GetWorldColumnKey(int worldX, int worldZ)
+        {
+            return ((long)worldX << 32) ^ (uint)worldZ;
+        }
+
+        private void EnsureGenerationCaches()
+        {
+            if (!cacheSeedInitialized || cacheSeed != seed)
+            {
+                ClearGenerationCaches();
+                cacheSeed = seed;
+                cacheSeedInitialized = true;
+            }
+        }
+
+        private void ClearGenerationCaches()
+        {
+            biomeCache.Clear();
+            vegetationTintCache.Clear();
         }
 
         /// <summary>
