@@ -555,7 +555,9 @@ public class PlayerController : MonoBehaviour
     /// <summary>Твёрдость блока: воздух не твёрдый, всё остальное твёрдое.</summary>
     private bool IsSolid(Vector3Int p)
     {
-        return _world.GetBlock(p) != BlockType.Air;
+        BlockType block = _world.GetBlock(p);
+        return block != BlockType.Air &&
+               block != BlockType.Water;
     }
 
 
