@@ -81,6 +81,67 @@ namespace Voxel
         private const int VegetationTintRadius = 15;
         private const int VegetationTintSampleStep = 5;
 
+        /// <summary>
+        /// Ограничить генерационные кэши областью вокруг игрока.
+        /// Это не даёт бесконечному миру накапливать данные каждой
+        /// посещённой колонки в памяти.
+        /// </summary>
+        public void TrimGenerationCaches(
+            int centerWorldX,
+            int centerWorldZ,
+            int radiusBlocks)
+        {
+            EnsureGenerationCaches();
+
+            radiusBlocks = Mathf.Max(
+                radiusBlocks,
+                VegetationTintRadius + 1);
+
+            int minX = centerWorldX - radiusBlocks;
+            int maxX = centerWorldX + radiusBlocks;
+            int minZ = centerWorldZ - radiusBlocks;
+            int maxZ = centerWorldZ + radiusBlocks;
+
+            RemoveCacheOutside(
+                biomeCache,
+                minX,
+                maxX,
+                minZ,
+                maxZ);
+
+            RemoveCacheOutside(
+                vegetationTintCache,
+                minX,
+                maxX,
+                minZ,
+                maxZ);
+        }
+
+        private static void RemoveCacheOutside<T>(
+            Dictionary<long, T> cache,
+            int minX,
+            int maxX,
+            int minZ,
+            int maxZ)
+        {
+            var removeKeys = new List<long>();
+
+            foreach (long key in cache.Keys)
+            {
+                int x = (int)(key >> 32);
+                int z = (int)(uint)key;
+
+                if (x < minX || x > maxX ||
+                    z < minZ || z > maxZ)
+                {
+                    removeKeys.Add(key);
+                }
+            }
+
+            foreach (long key in removeKeys)
+                cache.Remove(key);
+        }
+
 
         /// <summary>Текущий seed генератора.</summary>
         public int Seed => seed;
