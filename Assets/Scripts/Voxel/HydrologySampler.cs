@@ -93,19 +93,9 @@ namespace Voxel
                     widthThreshold,
                     centerDistance);
 
-            // Континентальный low-frequency mask ограничивает частоту рек,
-            // но не разрывает русло на отдельные точки.
-            float basinNoise = Mathf.PerlinNoise(
-                (x + GetSeedOffset(seed, 28)) * 0.0007f,
-                (z + GetSeedOffset(seed, 29)) * 0.0007f);
-
-            float basinFactor =
-                Mathf.SmoothStep(
-                    0.30f,
-                    0.62f,
-                    basinNoise);
-
-            strength *= basinFactor;
+            // Не применяем дополнительную маску к готовому руслу:
+            // она могла бы обнулить отдельные участки и визуально разорвать
+            // реку на цепочку независимых фрагментов.
 
             return Mathf.Clamp01(strength);
         }
