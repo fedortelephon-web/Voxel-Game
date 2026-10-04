@@ -4,35 +4,38 @@ using UnityEngine;
 namespace Voxel
 {
     /// <summary>
-    /// Собирает меш чанка: рисует только грани, граничащие с воздухом.
-    /// Грани получают UV из пиксельного атласа; цвет вершин — затенение грани.
+    /// Собирает меш чанка и учитывает блоки соседних загруженных чанков
+    /// на границах. Это нужно для бесшовного chunk streaming.
     /// </summary>
     public static class ChunkMesher
     {
-        // Шесть направлений и для каждого — 4 угла квада.
-        // Порядок углов подобран так, чтобы треугольники смотрели наружу.
         private static readonly Vector3Int[] Directions =
         {
-            Vector3Int.right, Vector3Int.left, Vector3Int.up,
-            Vector3Int.down, Vector3Int.forward, Vector3Int.back,
+            Vector3Int.right, Vector3Int.left,
+            Vector3Int.up, Vector3Int.down,
+            Vector3Int.forward, Vector3Int.back,
         };
 
         private static readonly Vector3[][] FaceCorners =
         {
-            new[] { new Vector3(1,0,0), new Vector3(1,1,0), new Vector3(1,1,1), new Vector3(1,0,1) }, // +X
-            new[] { new Vector3(0,0,1), new Vector3(0,1,1), new Vector3(0,1,0), new Vector3(0,0,0) }, // -X
-            new[] { new Vector3(0,1,1), new Vector3(1,1,1), new Vector3(1,1,0), new Vector3(0,1,0) }, // +Y
-            new[] { new Vector3(0,0,0), new Vector3(1,0,0), new Vector3(1,0,1), new Vector3(0,0,1) }, // -Y
-            new[] { new Vector3(0,0,1), new Vector3(1,0,1), new Vector3(1,1,1), new Vector3(0,1,1) }, // +Z
-            new[] { new Vector3(1,0,0), new Vector3(0,0,0), new Vector3(0,1,0), new Vector3(1,1,0) }, // -Z
+            new[] { new Vector3(1,0,0), new Vector3(1,1,0), new Vector3(1,1,1), new Vector3(1,0,1) },
+            new[] { new Vector3(0,0,1), new Vector3(0,1,1), new Vector3(0,1,0), new Vector3(0,0,0) },
+            new[] { new Vector3(0,1,1), new Vector3(1,1,1), new Vector3(1,1,0), new Vector3(0,1,0) },
+            new[] { new Vector3(0,0,0), new Vector3(1,0,0), new Vector3(1,0,1), new Vector3(0,0,1) },
+            new[] { new Vector3(0,0,1), new Vector3(1,0,1), new Vector3(1,1,1), new Vector3(0,1,1) },
+            new[] { new Vector3(1,0,0), new Vector3(0,0,0), new Vector3(0,1,0), new Vector3(1,1,0) },
         };
 
-        // Яркость грани по направлению: верх светлее, бока и низ темнее.
-        // Порядок совпадает с массивом Directions.
-        private static readonly float[] FaceShade = { 0.8f, 0.8f, 1f, 0.5f, 0.7f, 0.7f };
+        private static readonly float[] FaceShade =
+        {
+            0.8f, 0.8f, 1f, 0.5f, 0.7f, 0.7f
+        };
 
-        /// <summary>Строит меш из данных чанка.</summary>
-        public static Mesh BuildMesh(ChunkData chunk, WorldGenerator worldGenerator, int chunkX, int chunkZ)
+        public static Mesh BuildMesh(
+            ChunkData chunk,
+            WorldManager worldManager,
+            int chunkX,
+            int chunkZ)
         {
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
@@ -44,67 +47,139 @@ namespace Voxel
             for (int z = 0; z < ChunkData.SizeZ; z++)
             for (int x = 0; x < ChunkData.SizeX; x++)
             {
-                BlockType block = chunk.GetBlock(x, y, z);
+                BlockType block =
+                    chunk.GetBlock(x, y, z);
+
                 if (block == BlockType.Air)
                     continue;
 
                 for (int face = 0; face < 6; face++)
                 {
-                    Vector3Int dir = Directions[face];
-                    // Границу чанка считаем воздухом, чтобы края были видны
-                    if (chunk.GetBlock(x + dir.x, y + dir.y, z + dir.z) != BlockType.Air)
+                    Vector3Int dir =
+                        Directions[face];
+
+                    int nx = x + dir.x;
+                    int ny = y + dir.y;
+                    int nz = z + dir.z;
+
+                    BlockType neighbor;
+
+                    if (nx >= 0 && nx < ChunkData.SizeX &&
+                        ny >= 0 && ny < ChunkData.SizeY &&
+                        nz >= 0 && nz < ChunkData.SizeZ)
+                    {
+                        neighbor =
+                            chunk.GetBlock(
+                                nx,
+                                ny,
+                                nz);
+                    }
+                    else
+                    {
+                        neighbor =
+                            worldManager.GetBlock(
+                                new Vector3Int(
+                                    chunkX * ChunkData.SizeX + nx,
+                                    ny,
+                                    chunkZ * ChunkData.SizeZ + nz));
+                    }
+
+                    if (neighbor != BlockType.Air)
                         continue;
 
-                    Rect tileUV = VoxelTextures.UVRect(VoxelTextures.TileForBlock(block, face));
-                    Color vegetationTint = Color.white;
+                    Rect tileUV =
+                        VoxelTextures.UVRect(
+                            VoxelTextures.TileForBlock(
+                                block,
+                                face));
+
+                    Color tint = Color.white;
 
                     if (block == BlockType.Grass ||
                         block == BlockType.Leaves)
                     {
-                        int worldX = chunkX * ChunkData.SizeX + x;
-                        int worldZ = chunkZ * ChunkData.SizeZ + z;
-                        vegetationTint = worldGenerator.GetVegetationTint(
-                            worldX,
-                            worldZ);
+                        tint =
+                            worldManager.GetVegetationTint(
+                                chunkX * ChunkData.SizeX + x,
+                                chunkZ * ChunkData.SizeZ + z);
                     }
 
-                    AddFace(vertices, normals, colors, uvs, triangles,
-                        new Vector3(x, y, z), face, tileUV, vegetationTint);
+                    AddFace(
+                        vertices,
+                        normals,
+                        colors,
+                        uvs,
+                        triangles,
+                        new Vector3(x, y, z),
+                        face,
+                        tileUV,
+                        tint);
                 }
             }
 
-            var mesh = new Mesh { name = "ChunkMesh" };
+            var mesh =
+                new Mesh
+                {
+                    name = "ChunkMesh"
+                };
+
             mesh.SetVertices(vertices);
             mesh.SetNormals(normals);
             mesh.SetColors(colors);
             mesh.SetUVs(0, uvs);
             mesh.SetTriangles(triangles, 0);
+
             return mesh;
         }
 
-        /// <summary>Добавляет один квад грани в списки меша с затенением и UV тайла.</summary>
-        private static void AddFace(List<Vector3> vertices, List<Vector3> normals,
-            List<Color> colors, List<Vector2> uvs, List<int> triangles,
-            Vector3 blockPos, int face, Rect tileUV, Color tint)
+        private static void AddFace(
+            List<Vector3> vertices,
+            List<Vector3> normals,
+            List<Color> colors,
+            List<Vector2> uvs,
+            List<int> triangles,
+            Vector3 blockPos,
+            int face,
+            Rect tileUV,
+            Color tint)
         {
-            int baseIndex = vertices.Count;
+            int baseIndex =
+                vertices.Count;
 
-            // Затенение запекаем в цвет вершин: шейдер умножит его на текстуру
-            float shade = FaceShade[face];
-            var faceColor = new Color(
-                shade * tint.r,
-                shade * tint.g,
-                shade * tint.b,
-                1f);
+            float shade =
+                FaceShade[face];
 
-            foreach (Vector3 corner in FaceCorners[face])
+            var faceColor =
+                new Color(
+                    shade * tint.r,
+                    shade * tint.g,
+                    shade * tint.b,
+                    1f);
+
+            foreach (Vector3 corner
+                     in FaceCorners[face])
             {
-                vertices.Add(blockPos + corner);
-                normals.Add(Directions[face]);
-                colors.Add(faceColor);
+                vertices.Add(
+                    blockPos + corner);
 
-                FaceUV(face, corner, out float u, out float v);
-                uvs.Add(new Vector2(tileUV.x + u * tileUV.width, tileUV.y + v * tileUV.height));
+                normals.Add(
+                    Directions[face]);
+
+                colors.Add(
+                    faceColor);
+
+                FaceUV(
+                    face,
+                    corner,
+                    out float u,
+                    out float v);
+
+                uvs.Add(
+                    new Vector2(
+                        tileUV.x +
+                        u * tileUV.width,
+                        tileUV.y +
+                        v * tileUV.height));
             }
 
             triangles.Add(baseIndex);
@@ -115,22 +190,30 @@ namespace Voxel
             triangles.Add(baseIndex + 3);
         }
 
-        /// <summary>
-        /// Вдоль каких мировых осей идут U и V текстуры для каждой грани.
-        /// Для боковых граней V = высота: трава на боку всегда сверху.
-        /// </summary>
-        private static void FaceUV(int face, Vector3 corner, out float u, out float v)
+        private static void FaceUV(
+            int face,
+            Vector3 corner,
+            out float u,
+            out float v)
         {
             switch (face)
             {
                 case 0:
                 case 1:
-                    u = corner.z; v = corner.y; break; // ±X
+                    u = corner.z;
+                    v = corner.y;
+                    break;
+
                 case 2:
                 case 3:
-                    u = corner.x; v = corner.z; break; // ±Y (верх/низ)
+                    u = corner.x;
+                    v = corner.z;
+                    break;
+
                 default:
-                    u = corner.x; v = corner.y; break; // ±Z
+                    u = corner.x;
+                    v = corner.y;
+                    break;
             }
         }
     }
