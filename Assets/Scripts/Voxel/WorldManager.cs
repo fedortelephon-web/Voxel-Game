@@ -141,9 +141,6 @@ namespace Voxel
 
             _currentPlayerChunk = playerChunk;
 
-            _chunkLoadQueue.Clear();
-            _queuedChunkLoads.Clear();
-
             var unload = new List<Vector2Int>();
 
             foreach (Vector2Int coord in _chunks.Keys)
@@ -155,29 +152,14 @@ namespace Voxel
             foreach (Vector2Int coord in unload)
                 UnloadChunk(coord);
 
-            var desired = GetChunkCoordsInRadius(
-                playerChunk,
-                loadDistanceChunks);
+            // Очередь генерации сохраняется между перемещениями игрока.
+            // Старые элементы, ставшие слишком далёкими, удаляем,
+            // а новые чанки добавляем сверху в порядке близости.
+            RefreshChunkLoadQueue(playerChunk);
 
-            desired.Sort((a, b) =>
-            {
-                int da = GetChunkDistanceSquared(a, playerChunk);
-                int db = GetChunkDistanceSquared(b, playerChunk);
-
-                bool av = da <= renderDistanceChunks * renderDistanceChunks;
-                bool bv = db <= renderDistanceChunks * renderDistanceChunks;
-
-                if (av != bv)
-                    return av ? -1 : 1;
-
-                return da.CompareTo(db);
-            });
-
-            foreach (Vector2Int coord in desired)
-            {
-                if (!_chunks.ContainsKey(coord))
-                    EnqueueChunkLoad(coord);
-            }
+            // Аналогично обновляем очередь мешей: уже ожидающие чанки
+            // не теряются при переходе игрока через границу чанка.
+            RefreshMeshBuildQueue(playerChunk);
 
             if (force)
             {
@@ -190,6 +172,113 @@ namespace Voxel
                 LastWorldGenerationMs = 0f;
                 LastWorldMeshBuildMs = 0f;
             }
+        }
+
+        private void RefreshChunkLoadQueue(
+            Vector2Int playerChunk)
+        {
+            var pending = new List<Vector2Int>();
+
+            while (_chunkLoadQueue.Count > 0)
+            {
+                Vector2Int coord =
+                    _chunkLoadQueue.Dequeue();
+
+                _queuedChunkLoads.Remove(coord);
+
+                if (IsWithinLoadDistance(
+                        coord,
+                        playerChunk) &&
+                    !_chunks.ContainsKey(coord))
+                {
+                    pending.Add(coord);
+                }
+            }
+
+            var desired = GetChunkCoordsInRadius(
+                playerChunk,
+                loadDistanceChunks);
+
+            foreach (Vector2Int coord in desired)
+            {
+                if (!_chunks.ContainsKey(coord))
+                    pending.Add(coord);
+            }
+
+            pending.Sort((a, b) =>
+            {
+                int da = GetChunkDistanceSquared(
+                    a,
+                    playerChunk);
+
+                int db = GetChunkDistanceSquared(
+                    b,
+                    playerChunk);
+
+                bool av =
+                    da <= renderDistanceChunks *
+                    renderDistanceChunks;
+
+                bool bv =
+                    db <= renderDistanceChunks *
+                    renderDistanceChunks;
+
+                if (av != bv)
+                    return av ? -1 : 1;
+
+                return da.CompareTo(db);
+            });
+
+            foreach (Vector2Int coord in pending)
+                EnqueueChunkLoad(coord);
+        }
+
+        private void RefreshMeshBuildQueue(
+            Vector2Int playerChunk)
+        {
+            var pending = new List<Vector2Int>();
+
+            while (_meshBuildQueue.Count > 0)
+            {
+                Vector2Int coord =
+                    _meshBuildQueue.Dequeue();
+
+                _queuedMeshBuilds.Remove(coord);
+
+                if (IsWithinRenderDistance(
+                        coord,
+                        playerChunk) &&
+                    _chunks.ContainsKey(coord) &&
+                    !_chunkMeshes.ContainsKey(coord))
+                {
+                    pending.Add(coord);
+                }
+            }
+
+            foreach (Vector2Int coord in _chunks.Keys)
+            {
+                if (IsWithinRenderDistance(
+                        coord,
+                        playerChunk) &&
+                    !_chunkMeshes.ContainsKey(coord))
+                {
+                    pending.Add(coord);
+                }
+            }
+
+            pending.Sort((a, b) =>
+            {
+                return GetChunkDistanceSquared(
+                           a,
+                           playerChunk)
+                    .CompareTo(
+                        GetChunkDistanceSquared(
+                            b,
+                            playerChunk));
+            });
+
+            foreach (Vector2Int coord in pending)
+                EnqueueMeshBuild(coord);
         }
 
         private static List<Vector2Int> GetChunkCoordsInRadius(
