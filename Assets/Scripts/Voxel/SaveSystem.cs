@@ -112,7 +112,12 @@ namespace Voxel
                 _inventory.Clear();
                 _stats.ResetStats();
 
-                _world.Regenerate();
+                int newSeed = Guid.NewGuid().GetHashCode();
+
+                Debug.Log(
+                    $"SaveSystem: новый случайный seed мира = {newSeed}");
+
+                _world.Regenerate(newSeed);
 
                 _player.position = new Vector3(8f, 12f, 8f);
 
