@@ -32,7 +32,7 @@ namespace Voxel
         private static readonly float[] FaceShade = { 0.8f, 0.8f, 1f, 0.5f, 0.7f, 0.7f };
 
         /// <summary>Строит меш из данных чанка.</summary>
-        public static Mesh BuildMesh(ChunkData chunk)
+        public static Mesh BuildMesh(ChunkData chunk, WorldGenerator worldGenerator, int chunkX, int chunkZ)
         {
             var vertices = new List<Vector3>();
             var normals = new List<Vector3>();
@@ -56,8 +56,20 @@ namespace Voxel
                         continue;
 
                     Rect tileUV = VoxelTextures.UVRect(VoxelTextures.TileForBlock(block, face));
+                    Color vegetationTint = Color.white;
+
+                    if (block == BlockType.Grass ||
+                        block == BlockType.Leaves)
+                    {
+                        int worldX = chunkX * ChunkData.SizeX + x;
+                        int worldZ = chunkZ * ChunkData.SizeZ + z;
+                        vegetationTint = worldGenerator.GetVegetationTint(
+                            worldX,
+                            worldZ);
+                    }
+
                     AddFace(vertices, normals, colors, uvs, triangles,
-                        new Vector3(x, y, z), face, tileUV);
+                        new Vector3(x, y, z), face, tileUV, vegetationTint);
                 }
             }
 
@@ -73,13 +85,17 @@ namespace Voxel
         /// <summary>Добавляет один квад грани в списки меша с затенением и UV тайла.</summary>
         private static void AddFace(List<Vector3> vertices, List<Vector3> normals,
             List<Color> colors, List<Vector2> uvs, List<int> triangles,
-            Vector3 blockPos, int face, Rect tileUV)
+            Vector3 blockPos, int face, Rect tileUV, Color tint)
         {
             int baseIndex = vertices.Count;
 
             // Затенение запекаем в цвет вершин: шейдер умножит его на текстуру
             float shade = FaceShade[face];
-            var faceColor = new Color(shade, shade, shade);
+            var faceColor = new Color(
+                shade * tint.r,
+                shade * tint.g,
+                shade * tint.b,
+                1f);
 
             foreach (Vector3 corner in FaceCorners[face])
             {
