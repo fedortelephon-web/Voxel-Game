@@ -25,6 +25,12 @@ namespace Voxel
         [Tooltip("Максимальная высота поверхности мира.")]
         [SerializeField] private int maxTerrainHeight = 128;
 
+        [Tooltip("Уровень воды в океанах.")]
+        [SerializeField] private int oceanWaterLevel = 50;
+
+        [Tooltip("Уровень небольших водоёмов в болотах.")]
+        [SerializeField] private int swampWaterLevel = 53;
+
         [Tooltip("Размер крупных форм рельефа. Меньше = крупнее формы.")]
         [SerializeField, Min(0.0001f)] private float terrainScale = 0.008f;
 
@@ -194,6 +200,35 @@ namespace Voxel
 
                         chunk.SetBlock(x, y, z, type);
                     }
+
+                    // Океаны — полноценные водоёмы. В болотах вода
+                    // появляется только в самых низких участках.
+                    int waterLevel = -1;
+
+                    if (biome.Type == BiomeType.Ocean &&
+                        height < oceanWaterLevel)
+                    {
+                        waterLevel = oceanWaterLevel;
+                    }
+                    else if (biome.Type == BiomeType.Swamp &&
+                             height < swampWaterLevel)
+                    {
+                        waterLevel = swampWaterLevel;
+                    }
+
+                    if (waterLevel >= 0)
+                    {
+                        for (int y = height + 1;
+                             y <= waterLevel && y < ChunkData.SizeY;
+                             y++)
+                        {
+                            chunk.SetBlock(
+                                x,
+                                y,
+                                z,
+                                BlockType.Water);
+                        }
+                    }
                 }
             }
 
@@ -213,12 +248,21 @@ namespace Voxel
                 $"E={minErosion:F2}-{maxErosion:F2}");
 
             if (generateTrees)
+            {
                 PlantTrees(
                     chunk,
                     heights,
                     biomes,
                     chunkX,
                     chunkZ);
+
+                PlaceMountainRocks(
+                    chunk,
+                    heights,
+                    biomes,
+                    chunkX,
+                    chunkZ);
+            }
 
             return chunk;
         }
@@ -518,9 +562,41 @@ namespace Voxel
                         continue;
 
                     int top = heights[x, z] + 1;
-                    const int trunk = 4;
 
-                    if (top + trunk + 1 >= ChunkData.SizeY)
+                    int trunk;
+                    int canopyRadius;
+                    int canopyBottom;
+
+                    switch (biome.Type)
+                    {
+                        case BiomeType.Forest:
+                            trunk = 5;
+                            canopyRadius = 2;
+                            canopyBottom = 2;
+                            break;
+
+                        case BiomeType.Taiga:
+                            // Высокие узкие хвойные силуэты.
+                            trunk = 7;
+                            canopyRadius = 2;
+                            canopyBottom = 3;
+                            break;
+
+                        case BiomeType.Swamp:
+                            // Низкие раскидистые деревья, в том числе у воды.
+                            trunk = 4;
+                            canopyRadius = 2;
+                            canopyBottom = 2;
+                            break;
+
+                        default:
+                            trunk = 4;
+                            canopyRadius = 1;
+                            canopyBottom = 2;
+                            break;
+                    }
+
+                    if (top + trunk + 2 >= ChunkData.SizeY)
                         continue;
 
                     for (int i = 0; i < trunk; i++)
@@ -528,17 +604,43 @@ namespace Voxel
                             x,
                             top + i,
                             z,
-                            BlockType.Wood
-                        );
+                            BlockType.Wood);
 
-                    for (int dy = trunk - 2; dy <= trunk - 1; dy++)
+                    for (int dy = canopyBottom;
+                         dy <= trunk;
+                         dy++)
                     {
-                        for (int dx = -2; dx <= 2; dx++)
+                        float t = Mathf.InverseLerp(
+                            canopyBottom,
+                            trunk,
+                            dy);
+
+                        int radius = canopyRadius;
+
+                        if (biome.Type == BiomeType.Taiga)
                         {
-                            for (int dz = -2; dz <= 2; dz++)
+                            radius = Mathf.Max(
+                                1,
+                                Mathf.RoundToInt(
+                                    Mathf.Lerp(
+                                        2f,
+                                        1f,
+                                        t)));
+                        }
+                        else if (biome.Type == BiomeType.Swamp)
+                        {
+                            radius = dy <= canopyBottom + 1
+                                ? 2
+                                : 1;
+                        }
+
+                        for (int dx = -radius; dx <= radius; dx++)
+                        {
+                            for (int dz = -radius; dz <= radius; dz++)
                             {
-                                if (Mathf.Abs(dx) == 2 &&
-                                    Mathf.Abs(dz) == 2)
+                                // Скругляем углы кроны.
+                                if (Mathf.Abs(dx) == radius &&
+                                    Mathf.Abs(dz) == radius)
                                     continue;
 
                                 SetIfAir(
@@ -546,51 +648,82 @@ namespace Voxel
                                     x + dx,
                                     top + dy,
                                     z + dz,
-                                    BlockType.Leaves
-                                );
+                                    BlockType.Leaves);
                             }
                         }
                     }
+                }
+            }
+        }
 
-                    SetIfAir(
+        /// <summary>
+        /// Добавляет редкие каменные валуны в горных биомах.
+        /// </summary>
+        private void PlaceMountainRocks(
+            ChunkData chunk,
+            int[,] heights,
+            BiomeDefinition[,] biomes,
+            int chunkX,
+            int chunkZ)
+        {
+            int seedValue = GetChunkSeed(seed, chunkX, chunkZ) ^ 0x45D9F3B;
+
+            var rng = new System.Random(seedValue);
+
+            for (int x = 2; x < ChunkData.SizeX - 2; x++)
+            {
+                for (int z = 2; z < ChunkData.SizeZ - 2; z++)
+                {
+                    if (biomes[x, z].Type != BiomeType.Mountains)
+                        continue;
+
+                    if (rng.NextDouble() > 0.025f)
+                        continue;
+
+                    int y = heights[x, z] + 1;
+
+                    PlaceRockColumn(
                         chunk,
                         x,
-                        top + trunk,
+                        y,
                         z,
-                        BlockType.Leaves
-                    );
+                        rng.Next(1, 3));
+                }
+            }
+        }
 
+        /// <summary>Поставить маленький неровный валун из булыжника.</summary>
+        private static void PlaceRockColumn(
+            ChunkData chunk,
+            int x,
+            int y,
+            int z,
+            int height)
+        {
+            for (int i = 0; i < height; i++)
+            {
+                SetIfAir(
+                    chunk,
+                    x,
+                    y + i,
+                    z,
+                    BlockType.Cobblestone);
+
+                if (i == 0)
+                {
                     SetIfAir(
                         chunk,
                         x + 1,
-                        top + trunk,
+                        y,
                         z,
-                        BlockType.Leaves
-                    );
+                        BlockType.Cobblestone);
 
                     SetIfAir(
                         chunk,
                         x - 1,
-                        top + trunk,
+                        y,
                         z,
-                        BlockType.Leaves
-                    );
-
-                    SetIfAir(
-                        chunk,
-                        x,
-                        top + trunk,
-                        z + 1,
-                        BlockType.Leaves
-                    );
-
-                    SetIfAir(
-                        chunk,
-                        x,
-                        top + trunk,
-                        z - 1,
-                        BlockType.Leaves
-                    );
+                        BlockType.Cobblestone);
                 }
             }
         }
