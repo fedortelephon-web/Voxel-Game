@@ -18,11 +18,18 @@ namespace Voxel
         [SerializeField] private float terrainScale = 0.025f;
         [SerializeField] private float detailScale = 0.08f;
 
-        [Header("Climate")]
-        [SerializeField] private float temperatureScale = 0.01f;
-        [SerializeField] private float humidityScale = 0.009f;
-        [SerializeField] private float continentalnessScale = 0.006f;
-        [SerializeField] private float erosionScale = 0.012f;
+        [Header("Climate Noise")]
+        [Tooltip("Размер температурных регионов. Меньше = крупнее регионы.")]
+        [SerializeField, Min(0.0001f)] private float temperatureScale = 0.015f;
+
+        [Tooltip("Размер влажностных регионов. Меньше = крупнее регионы.")]
+        [SerializeField, Min(0.0001f)] private float humidityScale = 0.012f;
+
+        [Tooltip("Размер материков и крупных географических регионов. Меньше = крупнее регионы.")]
+        [SerializeField, Min(0.0001f)] private float continentalnessScale = 0.006f;
+
+        [Tooltip("Размер областей рельефа. Меньше = крупнее горные/ровные регионы.")]
+        [SerializeField, Min(0.0001f)] private float erosionScale = 0.012f;
 
         [Header("Layers")]
         [SerializeField] private int dirtDepth = 3;

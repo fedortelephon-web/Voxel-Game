@@ -576,15 +576,15 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a322ef1259268ac48af067ecb4ad71b5, type: 3}
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Voxel.WorldGenerator
-  seed: 12345
+  seed: 5
   baseHeight: 8
   heightVariation: 8
   terrainScale: 0.025
   detailScale: 0.08
-  temperatureScale: 0.07
-  humidityScale: 0.065
-  continentalnessScale: 0.04
-  erosionScale: 0.06
+  temperatureScale: 0.007
+  humidityScale: 0.0065
+  continentalnessScale: 0.008
+  erosionScale: 0.006
   dirtDepth: 3
   generateTrees: 1
 --- !u!4 &627250245
