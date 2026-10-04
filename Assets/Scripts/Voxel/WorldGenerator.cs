@@ -197,17 +197,25 @@ namespace Voxel
                         climate);
 
                     // Гидрология накладывается поверх базового рельефа.
-                    // Важно: биом определяется по исходной высоте, чтобы
-                    // русло реки не превращало окружающую сушу в Ocean.
+                    // Река использует непрерывную маску по мировым X/Z,
+                    // поэтому русло не распадается на отдельные блоки.
                     float riverStrength = HydrologySampler.GetRiverStrength(
                         seed,
                         worldX,
                         worldZ,
                         climate.Continentalness);
 
-                    bool river = terrainHeight > oceanWaterLevel &&
-                                 terrainHeight < maxTerrainHeight - 2 &&
-                                 riverStrength > 0.15f;
+                    // Внутренние реки держим около уровня моря.
+                    // На высоком рельефе река не прорезает гору насквозь.
+                    bool riverCandidate =
+                        terrainHeight > oceanWaterLevel &&
+                        terrainHeight <= oceanWaterLevel + 18 &&
+                        climate.Continentalness >= 0.42f &&
+                        riverStrength > 0.18f;
+
+                    bool river =
+                        riverCandidate &&
+                        riverStrength > 0.48f;
 
                     bool pond = false;
 
@@ -222,22 +230,49 @@ namespace Voxel
                                 worldZ);
 
                         pond =
-                            pondStrength > 0.05f &&
-                            IsLocalLowland(worldX, worldZ, terrainHeight) &&
+                            pondStrength > 0.35f &&
+                            IsLocalLowland(
+                                worldX,
+                                worldZ,
+                                terrainHeight) &&
                             terrainHeight <= mountainHeight &&
                             climate.Continentalness > 0.45f;
                     }
 
                     int height = terrainHeight;
 
+                    if (riverCandidate)
+                    {
+                        // Сначала формируем широкую речную долину.
+                        // Чем ближе к центру riverStrength, тем ниже берег.
+                        float bankFactor = Mathf.SmoothStep(
+                            0.18f,
+                            0.58f,
+                            riverStrength);
+
+                        int bankTarget =
+                            oceanWaterLevel + 1;
+
+                        int bankHeight = Mathf.RoundToInt(
+                            Mathf.Lerp(
+                                terrainHeight,
+                                bankTarget,
+                                bankFactor));
+
+                        height = Mathf.Min(
+                            terrainHeight,
+                            bankHeight);
+                    }
+
                     if (river)
                     {
-                        int riverDepth = Mathf.RoundToInt(
-                            Mathf.Lerp(2f, 4f, riverStrength));
+                        // Дно ниже моря, а поверхность воды всегда ровно
+                        // на oceanWaterLevel. Это даёт связное русло.
+                        int riverBedDepth =
+                            riverStrength > 0.78f ? 3 : 2;
 
-                        height = Mathf.Max(
-                            oceanWaterLevel + 1,
-                            terrainHeight - riverDepth);
+                        height = oceanWaterLevel -
+                                 riverBedDepth;
                     }
                     else if (pond)
                     {
@@ -248,7 +283,7 @@ namespace Voxel
                                 worldZ) * 2f);
 
                         height = Mathf.Max(
-                            oceanWaterLevel + 1,
+                            1,
                             terrainHeight - pondDepth);
                     }
 
@@ -262,7 +297,7 @@ namespace Voxel
                     // случайного смещения границы биома.
                     BiomeDefinition biome;
 
-                    if (height < oceanWaterLevel)
+                    if (terrainHeight < oceanWaterLevel)
                     {
                         biome = GetBiome(BiomeType.Ocean);
                     }
@@ -307,31 +342,32 @@ namespace Voxel
                         chunk.SetBlock(x, y, z, type);
                     }
 
-                    // Океаны — полноценные водоёмы. В болотах вода
-                    // появляется только в самых низких участках.
+                    // Вода:
+                    // океаны и реки имеют фиксированную поверхность,
+                    // а мелкие пруды заполняют локальную впадину.
                     int waterLevel = -1;
 
                     if (terrainHeight < oceanWaterLevel)
                     {
-                        // Океан использует исходный рельеф.
                         waterLevel = oceanWaterLevel;
                     }
                     else if (river)
                     {
-                        // Река лежит немного ниже берегов.
-                        waterLevel = terrainHeight - 1;
+                        // В оригинальной генерации Minecraft реки являются
+                        // river-биомом в слое биомов; у нас этот принцип
+                        // адаптирован в физическое русло с поверхностью
+                        // строго на уровне моря.
+                        waterLevel = oceanWaterLevel;
                     }
                     else if (pond)
                     {
-                        // Небольшой пруд занимает локальную низину.
-                        waterLevel = terrainHeight;
+                        // Небольшой водоём получает один слой воды над дном.
+                        waterLevel = height + 1;
                     }
                     else if (biome.Type == BiomeType.Swamp &&
                              height < swampWaterLevel &&
                              !IsNearOcean(worldX, worldZ, 2))
                     {
-                        // Болотные водоёмы не поднимаются выше уровня моря
-                        // вплотную к океанскому берегу.
                         waterLevel = swampWaterLevel;
                     }
 
