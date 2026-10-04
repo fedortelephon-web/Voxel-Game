@@ -5,7 +5,9 @@ using UnityEngine;
 namespace Voxel
 {
     /// <summary>
-    /// Управляет несколькими чанками мира, их генерацией и пересборкой мешей.
+    /// Управляет чанками бесконечного процедурного мира.
+    /// Загружает только чанки вокруг игрока, меши строит постепенно,
+    /// далёкие чанки выгружает из RAM.
     /// </summary>
     public class WorldManager : MonoBehaviour
     {
@@ -14,10 +16,19 @@ namespace Voxel
 
         [Header("Chunk Streaming")]
         [SerializeField, Min(1)] private int renderDistanceChunks = 4;
+        [SerializeField, Min(1)] private int loadDistanceChunks = 5;
+        [SerializeField, Range(1, 4)] private int maxChunkGenerationsPerFrame = 1;
         [SerializeField, Range(1, 4)] private int maxMeshBuildsPerFrame = 1;
 
-        /// <summary>Срабатывает после любого изменения блока — для системы сохранения.</summary>
         public event Action WorldChanged;
+
+        [Serializable]
+        public class SavedChunk
+        {
+            public int x;
+            public int z;
+            public string blocksBase64;
+        }
 
         private readonly Dictionary<Vector2Int, ChunkData> _chunks =
             new Dictionary<Vector2Int, ChunkData>();
@@ -25,11 +36,23 @@ namespace Voxel
         private readonly Dictionary<Vector2Int, MeshFilter> _meshFilters =
             new Dictionary<Vector2Int, MeshFilter>();
 
+        private readonly Dictionary<Vector2Int, MeshRenderer> _meshRenderers =
+            new Dictionary<Vector2Int, MeshRenderer>();
+
         private readonly Dictionary<Vector2Int, Mesh> _chunkMeshes =
             new Dictionary<Vector2Int, Mesh>();
 
-        private readonly Dictionary<Vector2Int, MeshRenderer> _meshRenderers =
-            new Dictionary<Vector2Int, MeshRenderer>();
+        private readonly Dictionary<Vector2Int, byte[]> _savedChunkData =
+            new Dictionary<Vector2Int, byte[]>();
+
+        private readonly HashSet<Vector2Int> _dirtyChunks =
+            new HashSet<Vector2Int>();
+
+        private readonly Queue<Vector2Int> _chunkLoadQueue =
+            new Queue<Vector2Int>();
+
+        private readonly HashSet<Vector2Int> _queuedChunkLoads =
+            new HashSet<Vector2Int>();
 
         private readonly Queue<Vector2Int> _meshBuildQueue =
             new Queue<Vector2Int>();
@@ -41,21 +64,22 @@ namespace Voxel
         private Transform _player;
         private Vector2Int _currentPlayerChunk;
         private bool _streamingInitialized;
-        private bool _initialVisibleBuildPending;
-        private float _initialVisibleBuildStartTime;
 
-        private const int WorldSizeX = 32;
-        private const int WorldSizeZ = 32;
-        private const int WorldMinChunkX = -WorldSizeX / 2;
-        private const int WorldMinChunkZ = -WorldSizeZ / 2;
+        private bool _initialWorldGenerationPending;
+        private float _initialWorldGenerationStartTime;
+
+        private bool _initialVisibleMeshBuildPending;
+        private bool _initialVisibleMeshTimingStarted;
+        private float _initialVisibleMeshBuildStartTime;
 
         public int ChunkCount => _chunks.Count;
         public int VisibleChunkCount => _chunkMeshes.Count;
         public int MeshBuildQueueCount => _meshBuildQueue.Count;
+        public int ChunkLoadQueueCount => _chunkLoadQueue.Count;
         public int RenderDistance => renderDistanceChunks;
+        public int LoadDistance => loadDistanceChunks;
+        public int WorldSeed => worldGenerator != null ? worldGenerator.Seed : 0;
 
-        // Диагностика производительности. Значения нужны для профилирования
-        // WebGL/Yandex Games и не влияют на генерацию мира.
         public float LastWorldGenerationMs { get; private set; }
         public float LastWorldMeshBuildMs { get; private set; }
         public float LastChunkGenerationMs { get; private set; }
@@ -65,17 +89,14 @@ namespace Voxel
         public int TotalMeshVertices { get; private set; }
         public int TotalMeshTriangles { get; private set; }
 
-        /// <summary>Awake выполняется раньше Start других скриптов: мир готов до загрузки сейва.</summary>
         private void Awake()
         {
             EnsureRuntimeMaterial();
-            GenerateWorld();
+            ResetPerformanceMetrics();
         }
 
         private void Start()
         {
-            // Даём SaveSystem и остальным Start() загрузить состояние мира,
-            // после чего начинаем строить только видимые чанки.
             _streamingInitialized = false;
         }
 
@@ -85,11 +106,9 @@ namespace Voxel
             {
                 FindPlayer();
 
-                // Первый Update уже выполняется после Start() всех объектов,
-                // поэтому сейв успевает восстановить позицию игрока.
-                if (_player != null || Time.frameCount > 2)
+                if (_player != null)
                 {
-                    UpdateVisibleChunks(true);
+                    UpdateChunkStreaming(true);
                     _streamingInitialized = true;
                 }
             }
@@ -99,496 +118,558 @@ namespace Voxel
                     FindPlayer();
 
                 if (_player != null)
-                    UpdateVisibleChunks(false);
+                    UpdateChunkStreaming(false);
             }
 
             if (_streamingInitialized)
+            {
+                ProcessChunkLoadQueue();
                 ProcessMeshBuildQueue();
-        }
-
-        /// <summary>Создать мир из чанков вокруг центрального чанка.</summary>
-        private void GenerateWorld()
-        {
-            float startTime = Time.realtimeSinceStartup;
-            MaxChunkGenerationMs = 0f;
-            MaxMeshRebuildMs = 0f;
-
-            for (int chunkX = WorldMinChunkX; chunkX < WorldMinChunkX + WorldSizeX; chunkX++)
-            {
-                for (int chunkZ = WorldMinChunkZ; chunkZ < WorldMinChunkZ + WorldSizeZ; chunkZ++)
-                {
-                    CreateChunk(chunkX, chunkZ);
-                }
-            }
-
-            LastWorldGenerationMs =
-                (Time.realtimeSinceStartup - startTime) * 1000f;
-
-            // Меши не строим здесь: только данные мира.
-            // Видимые чанки будут созданы порциями в Update().
-            LastWorldMeshBuildMs = 0f;
-
-            worldGenerator.LogBiomeMap(
-                WorldMinChunkX * ChunkData.SizeX,
-                (WorldMinChunkX + WorldSizeX) * ChunkData.SizeX,
-                WorldMinChunkZ * ChunkData.SizeZ,
-                (WorldMinChunkZ + WorldSizeZ) * ChunkData.SizeZ,
-                16);
-        }
-
-        /// <summary>Создать один чанк и его объект в сцене.</summary>
-        private void CreateChunk(int chunkX, int chunkZ)
-        {
-            var coord = new Vector2Int(chunkX, chunkZ);
-
-            float startTime = Time.realtimeSinceStartup;
-            ChunkData chunk = worldGenerator.GenerateChunk(chunkX, chunkZ);
-            LastChunkGenerationMs =
-                (Time.realtimeSinceStartup - startTime) * 1000f;
-            MaxChunkGenerationMs = Mathf.Max(
-                MaxChunkGenerationMs,
-                LastChunkGenerationMs);
-
-            _chunks[coord] = chunk;
-
-            GameObject chunkObject = new GameObject($"Chunk_{chunkX}_{chunkZ}");
-            chunkObject.transform.SetParent(transform);
-            chunkObject.transform.localPosition = new Vector3(
-                chunkX * ChunkData.SizeX,
-                0f,
-                chunkZ * ChunkData.SizeZ
-            );
-
-            MeshFilter meshFilter = chunkObject.AddComponent<MeshFilter>();
-            MeshRenderer renderer = chunkObject.AddComponent<MeshRenderer>();
-
-            renderer.sharedMaterial = _runtimeBlockMaterial;
-            renderer.enabled = false;
-
-            _meshFilters[coord] = meshFilter;
-            _meshRenderers[coord] = renderer;
-        }
-
-        /// <summary>Получить блок по мировым координатам.</summary>
-        public BlockType GetBlock(Vector3Int worldPos)
-        {
-            if (worldPos.y < 0 || worldPos.y >= ChunkData.SizeY)
-                return BlockType.Air;
-
-            Vector2Int chunkCoord = WorldToChunkCoord(worldPos);
-            Vector3Int localPos = WorldToLocal(worldPos);
-
-            if (!_chunks.TryGetValue(chunkCoord, out ChunkData chunk))
-                return BlockType.Air;
-
-            return chunk.GetBlock(localPos.x, localPos.y, localPos.z);
-        }
-
-        /// <summary>В пределах ли мира координата.</summary>
-        public bool InBounds(Vector3Int worldPos)
-        {
-            if (worldPos.y < 0 || worldPos.y >= ChunkData.SizeY)
-                return false;
-
-            Vector2Int chunkCoord = WorldToChunkCoord(worldPos);
-            return _chunks.ContainsKey(chunkCoord);
-        }
-
-        /// <summary>Установить блок и пересобрать затронутые чанки.</summary>
-        public void SetBlock(Vector3Int worldPos, BlockType type)
-        {
-            if (!InBounds(worldPos))
-                return;
-
-            Vector2Int chunkCoord = WorldToChunkCoord(worldPos);
-            Vector3Int localPos = WorldToLocal(worldPos);
-
-            ChunkData chunk = _chunks[chunkCoord];
-            chunk.SetBlock(localPos.x, localPos.y, localPos.z, type);
-
-            RebuildChunk(chunkCoord);
-
-            if (localPos.x == 0)
-                RebuildChunk(chunkCoord + Vector2Int.left);
-
-            if (localPos.x == ChunkData.SizeX - 1)
-                RebuildChunk(chunkCoord + Vector2Int.right);
-
-            if (localPos.z == 0)
-                RebuildChunk(chunkCoord + new Vector2Int(0, -1));
-
-            if (localPos.z == ChunkData.SizeZ - 1)
-                RebuildChunk(chunkCoord + new Vector2Int(0, 1));
-
-            WorldChanged?.Invoke();
-        }
-
-        /// <summary>Пересоздать мир с нуля с текущим seed.</summary>
-        public void Regenerate()
-        {
-            ClearWorld();
-
-            GenerateWorld();
-            WorldChanged?.Invoke();
-        }
-
-        /// <summary>Пересоздать мир с нуля с указанным seed.</summary>
-        public void Regenerate(int newSeed)
-        {
-            worldGenerator.SetSeed(newSeed);
-            Regenerate();
-        }
-
-        /// <summary>Байты всех чанков для сохранения.</summary>
-        public byte[] GetBlocksBytes()
-        {
-            int chunkCount = _chunks.Count;
-            int chunkSize =
-                ChunkData.SizeX *
-                ChunkData.SizeY *
-                ChunkData.SizeZ;
-
-            var result = new byte[chunkCount * chunkSize];
-
-            int offset = 0;
-
-            for (int chunkX = WorldMinChunkX; chunkX < WorldMinChunkX + WorldSizeX; chunkX++)
-            {
-                for (int chunkZ = WorldMinChunkZ; chunkZ < WorldMinChunkZ + WorldSizeZ; chunkZ++)
-                {
-                    Vector2Int coord = new Vector2Int(chunkX, chunkZ);
-
-                    if (!_chunks.TryGetValue(coord, out ChunkData chunk))
-                        continue;
-
-                    byte[] data = chunk.ToBytes();
-                    Buffer.BlockCopy(data, 0, result, offset, data.Length);
-                    offset += data.Length;
-                }
-            }
-
-            return result;
-        }
-
-        /// <summary>Загрузить байты всех чанков и пересобрать меши.</summary>
-        public bool SetBlocksBytes(byte[] data)
-{
-    int chunkSize =
-        ChunkData.SizeX *
-        ChunkData.SizeY *
-        ChunkData.SizeZ;
-
-    int expectedSize = _chunks.Count * chunkSize;
-
-    Debug.Log(
-        $"WorldManager: загрузка мира. " +
-        $"Получено байт: {data?.Length ?? -1}, " +
-        $"ожидалось: {expectedSize}, " +
-        $"чанков: {_chunks.Count}");
-
-    if (data == null || data.Length != expectedSize)
-        return false;
-
-    int offset = 0;
-
-    for (int chunkX = WorldMinChunkX; chunkX < WorldMinChunkX + WorldSizeX; chunkX++)
-    {
-        for (int chunkZ = WorldMinChunkZ; chunkZ < WorldMinChunkZ + WorldSizeZ; chunkZ++)
-        {
-            Vector2Int coord = new Vector2Int(chunkX, chunkZ);
-
-            if (!_chunks.TryGetValue(coord, out ChunkData chunk))
-                return false;
-
-            byte[] chunkData = new byte[chunkSize];
-            Buffer.BlockCopy(data, offset, chunkData, 0, chunkSize);
-
-            if (!chunk.FromBytes(chunkData))
-                return false;
-
-            int nonAir = 0;
-
-            for (int y = 0; y < ChunkData.SizeY; y++)
-            {
-                for (int z = 0; z < ChunkData.SizeZ; z++)
-                {
-                    for (int x = 0; x < ChunkData.SizeX; x++)
-                    {
-                        if (chunk.GetBlock(x, y, z) != BlockType.Air)
-                            nonAir++;
-                    }
-                }
-            }
-
-            Debug.Log(
-                $"WorldManager: чанк ({chunkX}, {chunkZ}) " +
-                $"загружен. Непустых блоков: {nonAir}");
-
-            offset += chunkSize;
-        }
-    }
-
-    RebuildVisibleMeshes();
-
-    Debug.Log(
-        $"WorldManager: данные всех {_chunks.Count} чанков загружены. " +
-        $"Меши видимых чанков поставлены в очередь.");
-
-    return true;
-}
-        /// <summary>Перевести мировую координату в координату чанка.</summary>
-        private static Vector2Int WorldToChunkCoord(Vector3Int worldPos)
-        {
-            int chunkX = FloorDiv(worldPos.x, ChunkData.SizeX);
-            int chunkZ = FloorDiv(worldPos.z, ChunkData.SizeZ);
-
-            return new Vector2Int(chunkX, chunkZ);
-        }
-
-        /// <summary>Перевести мировую координату в локальную координату чанка.</summary>
-        private static Vector3Int WorldToLocal(Vector3Int worldPos)
-        {
-            int localX = Mod(worldPos.x, ChunkData.SizeX);
-            int localZ = Mod(worldPos.z, ChunkData.SizeZ);
-
-            return new Vector3Int(localX, worldPos.y, localZ);
-        }
-
-        /// <summary>Целочисленное деление с округлением вниз.</summary>
-        private static int FloorDiv(int value, int divisor)
-        {
-            int result = value / divisor;
-
-            if (value < 0 && value % divisor != 0)
-                result--;
-
-            return result;
-        }
-
-        /// <summary>Положительный остаток для отрицательных координат.</summary>
-        private static int Mod(int value, int divisor)
-        {
-            int result = value % divisor;
-            return result < 0 ? result + divisor : result;
-        }
-
-        /// <summary>Перестроить меш одного видимого чанка.</summary>
-        private void RebuildChunk(Vector2Int coord)
-        {
-            if (!_chunks.ContainsKey(coord))
-                return;
-
-            if (!_meshFilters.ContainsKey(coord))
-                return;
-
-            if (!IsChunkCurrentlyVisible(coord))
-                return;
-
-            BuildChunkMesh(coord);
-        }
-
-        private void BuildChunkMesh(Vector2Int coord)
-        {
-            if (!_chunks.TryGetValue(coord, out ChunkData chunk))
-                return;
-
-            if (!_meshFilters.TryGetValue(coord, out MeshFilter meshFilter))
-                return;
-
-            if (!_meshRenderers.TryGetValue(coord, out MeshRenderer renderer))
-                return;
-
-            float startTime = Time.realtimeSinceStartup;
-
-            Mesh newMesh = ChunkMesher.BuildMesh(
-                chunk,
-                worldGenerator,
-                coord.x,
-                coord.y);
-
-            LastMeshRebuildMs =
-                (Time.realtimeSinceStartup - startTime) * 1000f;
-
-            MaxMeshRebuildMs = Mathf.Max(
-                MaxMeshRebuildMs,
-                LastMeshRebuildMs);
-
-            RemoveMeshMetrics(coord);
-
-            if (_chunkMeshes.TryGetValue(coord, out Mesh oldMesh))
-            {
-                if (oldMesh != null)
-                    Destroy(oldMesh);
-            }
-
-            _chunkMeshes[coord] = newMesh;
-            meshFilter.sharedMesh = newMesh;
-            renderer.enabled = true;
-
-            AddMeshMetrics(newMesh);
-        }
-
-        private void ProcessMeshBuildQueue()
-        {
-            int buildsThisFrame = 0;
-
-            while (buildsThisFrame < maxMeshBuildsPerFrame &&
-                   _meshBuildQueue.Count > 0)
-            {
-                Vector2Int coord = _meshBuildQueue.Dequeue();
-                _queuedMeshBuilds.Remove(coord);
-
-                if (!IsChunkCurrentlyVisible(coord))
-                    continue;
-
-                if (_chunkMeshes.ContainsKey(coord))
-                    continue;
-
-                BuildChunkMesh(coord);
-                buildsThisFrame++;
-            }
-
-            if (_initialVisibleBuildPending &&
-                _meshBuildQueue.Count == 0)
-            {
-                LastWorldMeshBuildMs =
-                    (Time.realtimeSinceStartup -
-                     _initialVisibleBuildStartTime) * 1000f;
-
-                _initialVisibleBuildPending = false;
             }
         }
 
-        private void UpdateVisibleChunks(bool force)
+        private void UpdateChunkStreaming(bool force)
         {
             if (_player == null)
-                FindPlayer();
+                return;
 
-            Vector2Int playerChunk;
-
-            if (_player != null)
-            {
-                playerChunk = WorldToChunkCoord(
-                    Vector3Int.FloorToInt(_player.position));
-            }
-            else
-            {
-                playerChunk = new Vector2Int(0, 0);
-            }
+            Vector2Int playerChunk = WorldToChunkCoord(
+                Vector3Int.FloorToInt(_player.position));
 
             if (!force && playerChunk == _currentPlayerChunk)
                 return;
 
             _currentPlayerChunk = playerChunk;
 
-            _meshBuildQueue.Clear();
-            _queuedMeshBuilds.Clear();
+            _chunkLoadQueue.Clear();
+            _queuedChunkLoads.Clear();
 
-            var desired = new List<Vector2Int>();
+            var unload = new List<Vector2Int>();
 
-            foreach (Vector2Int coord in _meshFilters.Keys)
+            foreach (Vector2Int coord in _chunks.Keys)
             {
-                if (IsWithinRenderDistance(coord, playerChunk))
-                    desired.Add(coord);
-                else
-                    UnloadChunkMesh(coord);
+                if (!IsWithinLoadDistance(coord, playerChunk))
+                    unload.Add(coord);
             }
 
-            desired.Sort(
-                (a, b) =>
-                {
-                    int da = GetChunkDistanceSquared(a, playerChunk);
-                    int db = GetChunkDistanceSquared(b, playerChunk);
-                    return da.CompareTo(db);
-                });
+            foreach (Vector2Int coord in unload)
+                UnloadChunk(coord);
 
-            int missingBefore = 0;
+            var desired = GetChunkCoordsInRadius(
+                playerChunk,
+                loadDistanceChunks);
+
+            desired.Sort((a, b) =>
+            {
+                int da = GetChunkDistanceSquared(a, playerChunk);
+                int db = GetChunkDistanceSquared(b, playerChunk);
+
+                bool av = da <= renderDistanceChunks * renderDistanceChunks;
+                bool bv = db <= renderDistanceChunks * renderDistanceChunks;
+
+                if (av != bv)
+                    return av ? -1 : 1;
+
+                return da.CompareTo(db);
+            });
 
             foreach (Vector2Int coord in desired)
             {
-                if (_meshRenderers.TryGetValue(
-                        coord,
-                        out MeshRenderer renderer))
-                {
-                    renderer.enabled = _chunkMeshes.ContainsKey(coord);
-                }
-
-                if (!_chunkMeshes.ContainsKey(coord))
-                {
-                    EnqueueMeshBuild(coord);
-                    missingBefore++;
-                }
+                if (!_chunks.ContainsKey(coord))
+                    EnqueueChunkLoad(coord);
             }
 
-            if (force && missingBefore > 0)
+            if (force)
             {
-                _initialVisibleBuildStartTime =
+                _initialWorldGenerationStartTime =
                     Time.realtimeSinceStartup;
-                _initialVisibleBuildPending = true;
+                _initialWorldGenerationPending = true;
+
+                _initialVisibleMeshBuildPending = true;
+                _initialVisibleMeshTimingStarted = false;
+                LastWorldGenerationMs = 0f;
+                LastWorldMeshBuildMs = 0f;
             }
         }
 
-        private void EnqueueMeshBuild(Vector2Int coord)
+        private static List<Vector2Int> GetChunkCoordsInRadius(
+            Vector2Int center,
+            int radius)
         {
-            if (!_queuedMeshBuilds.Add(coord))
-                return;
+            var result = new List<Vector2Int>();
+            int radiusSquared = radius * radius;
 
-            _meshBuildQueue.Enqueue(coord);
-        }
-
-        private bool IsChunkCurrentlyVisible(Vector2Int coord)
-        {
-            return IsWithinRenderDistance(
-                coord,
-                _currentPlayerChunk);
-        }
-
-        private bool IsWithinRenderDistance(
-            Vector2Int coord,
-            Vector2Int center)
-        {
-            return GetChunkDistanceSquared(coord, center) <=
-                   renderDistanceChunks * renderDistanceChunks;
-        }
-
-        private static int GetChunkDistanceSquared(
-            Vector2Int a,
-            Vector2Int b)
-        {
-            int dx = a.x - b.x;
-            int dz = a.y - b.y;
-            return dx * dx + dz * dz;
-        }
-
-        private void RebuildVisibleMeshes()
-        {
-            _meshBuildQueue.Clear();
-            _queuedMeshBuilds.Clear();
-
-            foreach (Vector2Int coord in _meshFilters.Keys)
+            for (int dz = -radius; dz <= radius; dz++)
+            for (int dx = -radius; dx <= radius; dx++)
             {
-                if (!IsChunkCurrentlyVisible(coord))
+                if (dx * dx + dz * dz > radiusSquared)
                     continue;
 
-                UnloadChunkMesh(coord);
-                EnqueueMeshBuild(coord);
+                result.Add(new Vector2Int(
+                    center.x + dx,
+                    center.y + dz));
+            }
+
+            return result;
+        }
+
+        private void EnqueueChunkLoad(Vector2Int coord)
+        {
+            if (_queuedChunkLoads.Add(coord))
+                _chunkLoadQueue.Enqueue(coord);
+        }
+
+        private void ProcessChunkLoadQueue()
+        {
+            int generated = 0;
+
+            while (generated < maxChunkGenerationsPerFrame &&
+                   _chunkLoadQueue.Count > 0)
+            {
+                Vector2Int coord = _chunkLoadQueue.Dequeue();
+                _queuedChunkLoads.Remove(coord);
+
+                if (!IsWithinLoadDistance(
+                        coord,
+                        _currentPlayerChunk))
+                    continue;
+
+                if (_chunks.ContainsKey(coord))
+                    continue;
+
+                CreateChunk(coord.x, coord.y);
+                generated++;
+            }
+
+            if (_initialWorldGenerationPending &&
+                _chunkLoadQueue.Count == 0)
+            {
+                LastWorldGenerationMs =
+                    (Time.realtimeSinceStartup -
+                     _initialWorldGenerationStartTime) * 1000f;
+
+                _initialWorldGenerationPending = false;
             }
         }
 
-        private void UnloadChunkMesh(Vector2Int coord)
+        private void CreateChunk(int chunkX, int chunkZ)
         {
-            if (_meshRenderers.TryGetValue(
+            Vector2Int coord =
+                new Vector2Int(chunkX, chunkZ);
+
+            float start = Time.realtimeSinceStartup;
+
+            ChunkData chunk =
+                worldGenerator.GenerateChunk(
+                    chunkX,
+                    chunkZ);
+
+            LastChunkGenerationMs =
+                (Time.realtimeSinceStartup - start) * 1000f;
+
+            MaxChunkGenerationMs =
+                Mathf.Max(
+                    MaxChunkGenerationMs,
+                    LastChunkGenerationMs);
+
+            if (_savedChunkData.TryGetValue(
                     coord,
-                    out MeshRenderer renderer))
+                    out byte[] saved))
             {
-                renderer.enabled = false;
+                chunk.FromBytes(saved);
             }
 
-            if (_meshFilters.TryGetValue(
+            _chunks[coord] = chunk;
+
+            GameObject go =
+                new GameObject(
+                    $"Chunk_{chunkX}_{chunkZ}");
+
+            go.transform.SetParent(transform);
+            go.transform.localPosition =
+                new Vector3(
+                    chunkX * ChunkData.SizeX,
+                    0f,
+                    chunkZ * ChunkData.SizeZ);
+
+            MeshFilter filter =
+                go.AddComponent<MeshFilter>();
+
+            MeshRenderer renderer =
+                go.AddComponent<MeshRenderer>();
+
+            renderer.sharedMaterial =
+                _runtimeBlockMaterial;
+            renderer.enabled = false;
+
+            _meshFilters[coord] = filter;
+            _meshRenderers[coord] = renderer;
+
+            if (IsWithinRenderDistance(
                     coord,
-                    out MeshFilter meshFilter))
+                    _currentPlayerChunk))
             {
-                meshFilter.sharedMesh = null;
+                EnqueueMeshBuild(coord);
+            }
+
+            for (int i = 0; i < 4; i++)
+            {
+                Vector2Int neighbor =
+                    coord + GetHorizontalDirection(i);
+
+                if (!IsWithinRenderDistance(
+                        neighbor,
+                        _currentPlayerChunk))
+                    continue;
+
+                if (_chunkMeshes.ContainsKey(neighbor))
+                    EnqueueMeshBuild(neighbor);
+            }
+        }
+
+        private static Vector2Int GetHorizontalDirection(int index)
+        {
+            switch (index)
+            {
+                case 0: return Vector2Int.left;
+                case 1: return Vector2Int.right;
+                case 2: return new Vector2Int(0, -1);
+                default: return new Vector2Int(0, 1);
+            }
+        }
+
+        public BlockType GetBlock(Vector3Int worldPos)
+        {
+            if (worldPos.y < 0 ||
+                worldPos.y >= ChunkData.SizeY)
+                return BlockType.Air;
+
+            Vector2Int chunkCoord =
+                WorldToChunkCoord(worldPos);
+
+            Vector3Int local =
+                WorldToLocal(worldPos);
+
+            if (!_chunks.TryGetValue(
+                    chunkCoord,
+                    out ChunkData chunk))
+                return BlockType.Air;
+
+            return chunk.GetBlock(
+                local.x,
+                local.y,
+                local.z);
+        }
+
+        public bool InBounds(Vector3Int worldPos)
+        {
+            if (worldPos.y < 0 ||
+                worldPos.y >= ChunkData.SizeY)
+                return false;
+
+            return _chunks.ContainsKey(
+                WorldToChunkCoord(worldPos));
+        }
+
+        public void SetBlock(
+            Vector3Int worldPos,
+            BlockType type)
+        {
+            if (!InBounds(worldPos))
+                return;
+
+            Vector2Int chunkCoord =
+                WorldToChunkCoord(worldPos);
+
+            Vector3Int local =
+                WorldToLocal(worldPos);
+
+            _chunks[chunkCoord].SetBlock(
+                local.x,
+                local.y,
+                local.z,
+                type);
+
+            _dirtyChunks.Add(chunkCoord);
+
+            RebuildChunk(chunkCoord);
+
+            if (local.x == 0)
+                RebuildChunk(
+                    chunkCoord + Vector2Int.left);
+
+            if (local.x == ChunkData.SizeX - 1)
+                RebuildChunk(
+                    chunkCoord + Vector2Int.right);
+
+            if (local.z == 0)
+                RebuildChunk(
+                    chunkCoord + new Vector2Int(0, -1));
+
+            if (local.z == ChunkData.SizeZ - 1)
+                RebuildChunk(
+                    chunkCoord + new Vector2Int(0, 1));
+
+            WorldChanged?.Invoke();
+        }
+
+        public void Regenerate()
+        {
+            ClearWorld();
+            ResetPerformanceMetrics();
+            _streamingInitialized = false;
+            WorldChanged?.Invoke();
+        }
+
+        public void Regenerate(int newSeed)
+        {
+            worldGenerator.SetSeed(newSeed);
+            Regenerate();
+        }
+
+        public void SetSeedForLoading(int newSeed)
+        {
+            worldGenerator.SetSeed(newSeed);
+        }
+
+        /// <summary>
+        /// Сериализуются только реально изменённые чанки.
+        /// Неизменённый процедурный мир восстанавливается заново по seed.
+        /// </summary>
+        public SavedChunk[] GetSaveChunks()
+        {
+            var result = new List<SavedChunk>();
+            var added = new HashSet<Vector2Int>();
+
+            foreach (KeyValuePair<Vector2Int, byte[]> pair
+                     in _savedChunkData)
+            {
+                result.Add(CreateSavedChunk(
+                    pair.Key,
+                    pair.Value));
+                added.Add(pair.Key);
+            }
+
+            foreach (Vector2Int coord in _dirtyChunks)
+            {
+                if (added.Contains(coord))
+                    continue;
+
+                if (!_chunks.TryGetValue(
+                        coord,
+                        out ChunkData chunk))
+                    continue;
+
+                result.Add(CreateSavedChunk(
+                    coord,
+                    chunk.ToBytes()));
+
+                added.Add(coord);
+            }
+
+            return result.ToArray();
+        }
+
+        private static SavedChunk CreateSavedChunk(
+            Vector2Int coord,
+            byte[] data)
+        {
+            return new SavedChunk
+            {
+                x = coord.x,
+                z = coord.y,
+                blocksBase64 =
+                    Convert.ToBase64String(data)
+            };
+        }
+
+        public void LoadSaveChunks(
+            SavedChunk[] savedChunks)
+        {
+            _savedChunkData.Clear();
+            _dirtyChunks.Clear();
+
+            if (savedChunks == null)
+                return;
+
+            int expected =
+                ChunkData.SizeX *
+                ChunkData.SizeY *
+                ChunkData.SizeZ;
+
+            foreach (SavedChunk saved in savedChunks)
+            {
+                if (saved == null ||
+                    string.IsNullOrEmpty(
+                        saved.blocksBase64))
+                    continue;
+
+                try
+                {
+                    byte[] data =
+                        Convert.FromBase64String(
+                            saved.blocksBase64);
+
+                    if (data.Length != expected)
+                        continue;
+
+                    Vector2Int coord =
+                        new Vector2Int(
+                            saved.x,
+                            saved.z);
+
+                    _savedChunkData[coord] = data;
+
+                    if (_chunks.TryGetValue(
+                            coord,
+                            out ChunkData loaded))
+                    {
+                        loaded.FromBytes(data);
+                        EnqueueMeshBuild(coord);
+                    }
+                }
+                catch (FormatException)
+                {
+                    Debug.LogWarning(
+                        $"WorldManager: повреждён Base64 чанка " +
+                        $"({saved.x}, {saved.z}).");
+                }
+            }
+        }
+
+        private void RebuildChunk(
+            Vector2Int coord)
+        {
+            if (!_chunks.ContainsKey(coord) ||
+                !IsChunkCurrentlyVisible(coord))
+                return;
+
+            EnqueueMeshBuild(coord);
+        }
+
+        private void EnqueueMeshBuild(
+            Vector2Int coord)
+        {
+            if (!_chunks.ContainsKey(coord) ||
+                !_meshFilters.ContainsKey(coord))
+                return;
+
+            if (_queuedMeshBuilds.Add(coord))
+            {
+                _meshBuildQueue.Enqueue(coord);
+
+                if (_initialVisibleMeshBuildPending &&
+                    !_initialVisibleMeshTimingStarted &&
+                    IsWithinRenderDistance(
+                        coord,
+                        _currentPlayerChunk))
+                {
+                    _initialVisibleMeshBuildStartTime =
+                        Time.realtimeSinceStartup;
+                    _initialVisibleMeshTimingStarted = true;
+                }
+            }
+        }
+
+        private void ProcessMeshBuildQueue()
+        {
+            int built = 0;
+
+            while (built < maxMeshBuildsPerFrame &&
+                   _meshBuildQueue.Count > 0)
+            {
+                Vector2Int coord =
+                    _meshBuildQueue.Dequeue();
+
+                _queuedMeshBuilds.Remove(coord);
+
+                if (!IsChunkCurrentlyVisible(coord) ||
+                    !_chunks.ContainsKey(coord))
+                    continue;
+
+                BuildChunkMesh(coord);
+                built++;
+            }
+
+            if (_initialVisibleMeshBuildPending &&
+                _initialVisibleMeshTimingStarted &&
+                _meshBuildQueue.Count == 0 &&
+                CountVisibleMeshesAroundPlayer() ==
+                    CountChunksInRadius(renderDistanceChunks))
+            {
+                LastWorldMeshBuildMs =
+                    (Time.realtimeSinceStartup -
+                     _initialVisibleMeshBuildStartTime) *
+                    1000f;
+
+                _initialVisibleMeshBuildPending = false;
+            }
+        }
+
+        private void BuildChunkMesh(
+            Vector2Int coord)
+        {
+            if (!_chunks.TryGetValue(
+                    coord,
+                    out ChunkData chunk) ||
+                !_meshFilters.TryGetValue(
+                    coord,
+                    out MeshFilter filter) ||
+                !_meshRenderers.TryGetValue(
+                    coord,
+                    out MeshRenderer renderer))
+                return;
+
+            float start =
+                Time.realtimeSinceStartup;
+
+            Mesh mesh =
+                ChunkMesher.BuildMesh(
+                    chunk,
+                    this,
+                    coord.x,
+                    coord.y);
+
+            LastMeshRebuildMs =
+                (Time.realtimeSinceStartup - start) *
+                1000f;
+
+            MaxMeshRebuildMs =
+                Mathf.Max(
+                    MaxMeshRebuildMs,
+                    LastMeshRebuildMs);
+
+            RemoveMeshMetrics(coord);
+
+            if (_chunkMeshes.TryGetValue(
+                    coord,
+                    out Mesh old) &&
+                old != null)
+            {
+                Destroy(old);
+            }
+
+            _chunkMeshes[coord] = mesh;
+            filter.sharedMesh = mesh;
+            renderer.enabled = true;
+
+            AddMeshMetrics(mesh);
+        }
+
+        private void UnloadChunk(
+            Vector2Int coord)
+        {
+            if (!_chunks.TryGetValue(
+                    coord,
+                    out ChunkData chunk))
+                return;
+
+            if (_dirtyChunks.Contains(coord))
+            {
+                _savedChunkData[coord] =
+                    chunk.ToBytes();
+
+                _dirtyChunks.Remove(coord);
             }
 
             if (_chunkMeshes.TryGetValue(
@@ -602,41 +683,153 @@ namespace Voxel
 
                 _chunkMeshes.Remove(coord);
             }
-        }
 
-        private void AddMeshMetrics(Mesh mesh)
-        {
-            if (mesh == null)
-                return;
-
-            TotalMeshVertices += mesh.vertexCount;
-
-            if (mesh.subMeshCount > 0)
-                TotalMeshTriangles +=
-                    (int)(mesh.GetIndexCount(0) / 3);
-        }
-
-        private void RemoveMeshMetrics(Vector2Int coord)
-        {
-            if (!_chunkMeshes.TryGetValue(
+            if (_meshFilters.TryGetValue(
                     coord,
-                    out Mesh mesh) ||
-                mesh == null)
-                return;
+                    out MeshFilter filter))
+            {
+                filter.sharedMesh = null;
+            }
 
-            TotalMeshVertices -= mesh.vertexCount;
+            for (int i = 0; i < 4; i++)
+            {
+                Vector2Int neighbor =
+                    coord + GetHorizontalDirection(i);
 
-            if (mesh.subMeshCount > 0)
-                TotalMeshTriangles -=
-                    (int)(mesh.GetIndexCount(0) / 3);
+                if (IsWithinRenderDistance(
+                        neighbor,
+                        _currentPlayerChunk) &&
+                    _chunkMeshes.ContainsKey(neighbor))
+                {
+                    EnqueueMeshBuild(neighbor);
+                }
+            }
 
-            TotalMeshVertices = Mathf.Max(
-                TotalMeshVertices,
-                0);
+            if (_meshFilters.TryGetValue(
+                    coord,
+                    out MeshFilter chunkFilter) &&
+                chunkFilter != null)
+            {
+                Destroy(chunkFilter.gameObject);
+            }
 
-            TotalMeshTriangles = Mathf.Max(
-                TotalMeshTriangles,
-                0);
+            _meshFilters.Remove(coord);
+            _meshRenderers.Remove(coord);
+            _chunks.Remove(coord);
+        }
+
+        private int CountVisibleMeshesAroundPlayer()
+        {
+            int count = 0;
+
+            foreach (Vector2Int coord in _chunkMeshes.Keys)
+            {
+                if (IsWithinRenderDistance(
+                        coord,
+                        _currentPlayerChunk))
+                    count++;
+            }
+
+            return count;
+        }
+
+        private static int CountChunksInRadius(
+            int radius)
+        {
+            int count = 0;
+            int radiusSquared = radius * radius;
+
+            for (int dz = -radius; dz <= radius; dz++)
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                if (dx * dx + dz * dz <= radiusSquared)
+                    count++;
+            }
+
+            return count;
+        }
+
+        private bool IsChunkCurrentlyVisible(
+            Vector2Int coord)
+        {
+            return IsWithinRenderDistance(
+                coord,
+                _currentPlayerChunk);
+        }
+
+        private bool IsWithinRenderDistance(
+            Vector2Int coord,
+            Vector2Int center)
+        {
+            return GetChunkDistanceSquared(
+                coord,
+                center) <=
+                renderDistanceChunks *
+                renderDistanceChunks;
+        }
+
+        private bool IsWithinLoadDistance(
+            Vector2Int coord,
+            Vector2Int center)
+        {
+            return GetChunkDistanceSquared(
+                coord,
+                center) <=
+                loadDistanceChunks *
+                loadDistanceChunks;
+        }
+
+        private static int GetChunkDistanceSquared(
+            Vector2Int a,
+            Vector2Int b)
+        {
+            int dx = a.x - b.x;
+            int dz = a.y - b.y;
+            return dx * dx + dz * dz;
+        }
+
+        private static Vector2Int WorldToChunkCoord(
+            Vector3Int worldPos)
+        {
+            return new Vector2Int(
+                FloorDiv(
+                    worldPos.x,
+                    ChunkData.SizeX),
+                FloorDiv(
+                    worldPos.z,
+                    ChunkData.SizeZ));
+        }
+
+        private static Vector3Int WorldToLocal(
+            Vector3Int worldPos)
+        {
+            return new Vector3Int(
+                Mod(worldPos.x, ChunkData.SizeX),
+                worldPos.y,
+                Mod(worldPos.z, ChunkData.SizeZ));
+        }
+
+        private static int FloorDiv(
+            int value,
+            int divisor)
+        {
+            int result = value / divisor;
+
+            if (value < 0 &&
+                value % divisor != 0)
+                result--;
+
+            return result;
+        }
+
+        private static int Mod(
+            int value,
+            int divisor)
+        {
+            int result = value % divisor;
+            return result < 0
+                ? result + divisor
+                : result;
         }
 
         private void FindPlayer()
@@ -650,22 +843,33 @@ namespace Voxel
 
         private void EnsureRuntimeMaterial()
         {
-            if (_runtimeBlockMaterial != null)
+            if (_runtimeBlockMaterial != null ||
+                blockMaterial == null)
                 return;
 
-            if (blockMaterial == null)
-                return;
+            _runtimeBlockMaterial =
+                new Material(blockMaterial);
 
-            _runtimeBlockMaterial = new Material(blockMaterial)
-            {
-                name = blockMaterial.name + " (Runtime)"
-            };
+            _runtimeBlockMaterial.name =
+                blockMaterial.name +
+                " (Runtime)";
 
             _runtimeBlockMaterial.mainTexture =
                 VoxelTextures.Atlas;
         }
 
-        /// <summary>Удалить все объекты чанков.</summary>
+        private void ResetPerformanceMetrics()
+        {
+            LastWorldGenerationMs = 0f;
+            LastWorldMeshBuildMs = 0f;
+            LastChunkGenerationMs = 0f;
+            MaxChunkGenerationMs = 0f;
+            LastMeshRebuildMs = 0f;
+            MaxMeshRebuildMs = 0f;
+            TotalMeshVertices = 0;
+            TotalMeshTriangles = 0;
+        }
+
         private void ClearWorld()
         {
             foreach (Mesh mesh in _chunkMeshes.Values)
@@ -676,17 +880,33 @@ namespace Voxel
 
             _meshBuildQueue.Clear();
             _queuedMeshBuilds.Clear();
+            _chunkLoadQueue.Clear();
+            _queuedChunkLoads.Clear();
+
             _chunkMeshes.Clear();
             _meshFilters.Clear();
             _meshRenderers.Clear();
             _chunks.Clear();
+
+            _savedChunkData.Clear();
+            _dirtyChunks.Clear();
+
+            _currentPlayerChunk = Vector2Int.zero;
+            _streamingInitialized = false;
+            _initialWorldGenerationPending = false;
+            _initialVisibleMeshBuildPending = false;
+            _initialVisibleMeshTimingStarted = false;
+
             TotalMeshVertices = 0;
             TotalMeshTriangles = 0;
-            _streamingInitialized = false;
-            _initialVisibleBuildPending = false;
 
-            for (int i = transform.childCount - 1; i >= 0; i--)
-                Destroy(transform.GetChild(i).gameObject);
+            for (int i = transform.childCount - 1;
+                 i >= 0;
+                 i--)
+            {
+                Destroy(
+                    transform.GetChild(i).gameObject);
+            }
         }
 
         private void OnDestroy()
