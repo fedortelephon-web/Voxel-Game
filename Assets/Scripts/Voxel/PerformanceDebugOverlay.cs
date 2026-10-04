@@ -94,11 +94,11 @@ namespace Voxel
             EnsureStyles();
 
             GUI.Box(
-                new Rect(10f, 10f, 390f, 235f),
+                new Rect(10f, 10f, 430f, 248f),
                 GUIContent.none);
 
             GUILayout.BeginArea(
-                new Rect(18f, 15f, 374f, 225f));
+                new Rect(18f, 15f, 414f, 238f));
 
             GUILayout.Label(
                 $"FPS: {fps:F1}   Frame: {frameMs:F2} ms",
@@ -119,11 +119,12 @@ namespace Voxel
             if (world != null)
             {
                 GUILayout.Label(
-                    $"Chunks: {world.ChunkCount}   Visible: {world.VisibleChunkCount}",
+                    $"Chunks RAM: {world.ChunkCount}   Visible: {world.VisibleChunkCount}",
                     labelStyle);
 
                 GUILayout.Label(
-                    $"Render distance: {world.RenderDistance} chunks   Queue: {world.MeshBuildQueueCount}",
+                    $"Render: {world.RenderDistance}   Load: {world.LoadDistance}   " +
+                    $"Queues: C {world.ChunkLoadQueueCount} / M {world.MeshBuildQueueCount}",
                     labelStyle);
 
                 GUILayout.Label(
