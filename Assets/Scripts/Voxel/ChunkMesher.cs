@@ -55,10 +55,7 @@ namespace Voxel
             var uvs =
                 new List<Vector2>(InitialVertexCapacity);
 
-            var opaqueTriangles =
-                new List<int>(InitialTriangleIndexCapacity);
-
-            var waterTriangles =
+            var triangles =
                 new List<int>(InitialTriangleIndexCapacity);
 
             for (int y = 0; y < ChunkData.SizeY; y++)
@@ -122,22 +119,16 @@ namespace Voxel
                                 chunkZ * ChunkData.SizeZ + z);
                     }
 
-                    List<int> targetTriangles =
-                        block == BlockType.Water
-                            ? waterTriangles
-                            : opaqueTriangles;
-
                     AddFace(
                         vertices,
                         normals,
                         colors,
                         uvs,
-                        targetTriangles,
+                        triangles,
                         new Vector3(x, y, z),
                         face,
                         tileUV,
-                        tint,
-                        block == BlockType.Water);
+                        tint);
                 }
             }
 
@@ -158,16 +149,7 @@ namespace Voxel
             mesh.SetNormals(normals);
             mesh.SetColors(colors);
             mesh.SetUVs(0, uvs);
-            mesh.subMeshCount = 2;
-            mesh.SetTriangles(
-                opaqueTriangles,
-                0,
-                true);
-
-            mesh.SetTriangles(
-                waterTriangles,
-                1,
-                true);
+            mesh.SetTriangles(triangles, 0);
 
             return mesh;
         }
@@ -181,8 +163,7 @@ namespace Voxel
             Vector3 blockPos,
             int face,
             Rect tileUV,
-            Color tint,
-            bool transparent)
+            Color tint)
         {
             int baseIndex =
                 vertices.Count;
@@ -195,7 +176,7 @@ namespace Voxel
                     shade * tint.r,
                     shade * tint.g,
                     shade * tint.b,
-                    transparent ? 0.72f : 1f);
+                    1f);
 
             foreach (Vector3 corner
                      in FaceCorners[face])
