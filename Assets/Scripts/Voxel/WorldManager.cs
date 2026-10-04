@@ -24,7 +24,9 @@ namespace Voxel
         private readonly Dictionary<Vector2Int, Mesh> _chunkMeshes =
             new Dictionary<Vector2Int, Mesh>();
 
-        private const int WorldRadius = 1;
+        private const int WorldRadius = 4;
+
+        public int ChunkCount => _chunks.Count;
 
         /// <summary>Awake выполняется раньше Start других скриптов: мир готов до загрузки сейва.</summary>
         private void Awake()
@@ -225,7 +227,8 @@ namespace Voxel
 
     RebuildAllMeshes();
 
-    Debug.Log("WorldManager: все 9 чанков загружены и меши пересобраны.");
+    Debug.Log(
+        $"WorldManager: все {_chunks.Count} чанков загружены и меши пересобраны.");
 
     return true;
 }

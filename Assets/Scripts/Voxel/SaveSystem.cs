@@ -10,7 +10,7 @@ namespace Voxel
     /// </summary>
     public class SaveSystem : MonoBehaviour
     {
-        private const string SaveKey = "voxel_save_v8";
+        private const string SaveKey = "voxel_save_v9";
 
         [Header("Сохранение")]
         [SerializeField] private float saveDelay = 1f; // задержка, чтобы не писать на каждый клик
@@ -239,13 +239,11 @@ private void Load()
             $"SaveSystem: Base64 декодирован. " +
             $"Байт мира: {blockBytes.Length}");
 
-        const int WorldChunkCount = 9;
-
         int expectedBlockBytes =
             ChunkData.SizeX *
             ChunkData.SizeY *
             ChunkData.SizeZ *
-            WorldChunkCount;
+            _world.ChunkCount;
 
         if (blockBytes.Length != expectedBlockBytes)
         {
