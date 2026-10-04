@@ -19,6 +19,7 @@ namespace Voxel
                 case BlockType.CraftingTable: return new Color(0.55f, 0.38f, 0.22f);
                 case BlockType.Cobblestone: return new Color(0.48f, 0.48f, 0.5f);
                 case BlockType.Sand: return new Color(0.84f, 0.76f, 0.52f);
+                case BlockType.Water: return new Color(0.18f, 0.45f, 0.9f);
                 default: return Color.magenta;
             }
         }
