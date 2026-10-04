@@ -10,7 +10,7 @@ namespace Voxel
     public class WorldGenerator : MonoBehaviour
     {
         [Header("Seed")]
-        [SerializeField] private int seed = 12345;
+        [SerializeField] private int seed = 1;
 
         [Header("Terrain")]
         [SerializeField] private int baseHeight = 9;
@@ -28,7 +28,7 @@ namespace Voxel
         [SerializeField] private int dirtDepth = 3;
 
         [Header("Trees")]
-        [SerializeField] private bool generateTrees = true;
+        [SerializeField] private bool generateTrees = false;
 
 
         /// <summary>Текущий seed генератора.</summary>

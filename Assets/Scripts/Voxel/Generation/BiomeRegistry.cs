@@ -14,9 +14,9 @@ namespace Voxel
                 continentalness: 0.55f,
                 erosion: 0.80f,
                 surfaceBlock: BlockType.Grass,
-                fillerBlock: BlockType.Dirt,
-                dirtDepth: 3,
-                treeChance: 0.025f),
+                fillerBlock: BlockType.Grass,
+                dirtDepth: 32,
+                treeChance: 0f),
 
             new BiomeDefinition(
                 BiomeType.Forest,
@@ -24,10 +24,10 @@ namespace Voxel
                 humidity: 0.78f,
                 continentalness: 0.55f,
                 erosion: 0.65f,
-                surfaceBlock: BlockType.Grass,
-                fillerBlock: BlockType.Dirt,
-                dirtDepth: 3,
-                treeChance: 0.09f),
+                surfaceBlock: BlockType.Sand,
+                fillerBlock: BlockType.Sand,
+                dirtDepth: 32,
+                treeChance: 0f),
 
             new BiomeDefinition(
                 BiomeType.Desert,
@@ -35,9 +35,9 @@ namespace Voxel
                 humidity: 0.15f,
                 continentalness: 0.65f,
                 erosion: 0.85f,
-                surfaceBlock: BlockType.Sand,
-                fillerBlock: BlockType.Sand,
-                dirtDepth: 3,
+                surfaceBlock: BlockType.Stone,
+                fillerBlock: BlockType.Stone,
+                dirtDepth: 32,
                 treeChance: 0f),
 
             new BiomeDefinition(
@@ -46,10 +46,10 @@ namespace Voxel
                 humidity: 0.65f,
                 continentalness: 0.55f,
                 erosion: 0.65f,
-                surfaceBlock: BlockType.Grass,
-                fillerBlock: BlockType.Dirt,
-                dirtDepth: 3,
-                treeChance: 0.06f),
+                surfaceBlock: BlockType.Planks,
+                fillerBlock: BlockType.Planks,
+                dirtDepth: 32,
+                treeChance: 0f),
 
             new BiomeDefinition(
                 BiomeType.Mountains,
@@ -57,10 +57,10 @@ namespace Voxel
                 humidity: 0.45f,
                 continentalness: 0.85f,
                 erosion: 0.05f,
-                surfaceBlock: BlockType.Grass,
-                fillerBlock: BlockType.Stone,
-                dirtDepth: 1,
-                treeChance: 0.015f,
+                surfaceBlock: BlockType.Wood,
+                fillerBlock: BlockType.Wood,
+                dirtDepth: 32,
+                treeChance: 0f,
                 temperatureWeight: 1.2f,
                 humidityWeight: 1.2f,
                 continentalnessWeight: 2.0f,
@@ -72,10 +72,10 @@ namespace Voxel
                 humidity: 0.90f,
                 continentalness: 0.40f,
                 erosion: 0.90f,
-                surfaceBlock: BlockType.Grass,
-                fillerBlock: BlockType.Dirt,
-                dirtDepth: 4,
-                treeChance: 0.12f),
+                surfaceBlock: BlockType.CraftingTable,
+                fillerBlock: BlockType.CraftingTable,
+                dirtDepth: 32,
+                treeChance: 0f),
         };
     }
 }
