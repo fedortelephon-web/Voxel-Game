@@ -327,46 +327,55 @@ namespace Voxel
                 (x + terrainOffsetX) * mountainScale + 2000f,
                 (z + terrainOffsetZ) * mountainScale + 2000f);
 
-            // Continentalness теперь формирует сами материки:
-            // низкие значения дают глубокие океанические впадины,
-            // высокие — сушу.
-            float landFactor = Mathf.SmoothStep(
+            // Continentalness задаёт общий уровень местности,
+            // но не фиксирует мир на нескольких высотах.
+            // Низкие значения дают океанические впадины,
+            // средние — низменности и равнины,
+            // высокие — возвышенности.
+            float continentalElevation = Mathf.SmoothStep(
                 0f,
                 1f,
                 Mathf.InverseLerp(
-                    0.30f,
-                    0.55f,
+                    0.20f,
+                    0.70f,
                     climate.Continentalness));
 
             float baseTerrain = Mathf.Lerp(
-                18f,
-                plainsHeight,
-                landFactor);
+                6f,
+                96f,
+                continentalElevation);
 
-            // Небольшие холмы не должны ломать общую структуру мира.
+            // Непрерывные волны рельефа.
+            // Они работают везде: и на дне океана, и на равнинах, и в горах.
             float rollingTerrain =
-                (largeNoise - 0.5f) * 14f +
-                (detailNoise - 0.5f) * 6f;
+                (largeNoise - 0.5f) * 24f +
+                (detailNoise - 0.5f) * 10f;
 
-            // Низкая эрозия формирует горные массивы.
-            // Высота гор берётся именно из terrain height, а не из типа биома.
-            float mountainFactor =
-                landFactor *
-                Mathf.SmoothStep(
-                    0.55f,
-                    0.90f,
-                    1f - climate.Erosion);
-
-            float mountainShape =
-                Mathf.SmoothStep(
-                    0.45f,
+            // Низкая эрозия повышает вероятность крупного рельефа,
+            // но горы не включаются одним резким порогом.
+            float mountainPotential = Mathf.SmoothStep(
+                0f,
+                1f,
+                Mathf.InverseLerp(
                     0.75f,
-                    mountainNoise);
+                    0.25f,
+                    climate.Erosion));
 
+            // Ridged-подобная форма даёт хребты вместо плоских плато.
+            float ridge = 1f - Mathf.Abs(
+                mountainNoise * 2f - 1f);
+
+            ridge = Mathf.SmoothStep(
+                0.20f,
+                0.82f,
+                ridge);
+
+            // Чем сильнее горный потенциал и чем выраженнее хребет,
+            // тем выше поверхность. При этом вклад остаётся плавным.
             float mountainElevation =
-                mountainFactor *
-                mountainShape *
-                66f;
+                mountainPotential *
+                ridge *
+                42f;
 
             int height = Mathf.RoundToInt(
                 baseTerrain +
