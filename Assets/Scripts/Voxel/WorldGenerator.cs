@@ -191,15 +191,71 @@ namespace Voxel
                         continentalnessScale,
                         erosionScale);
 
-                    int height = GetTerrainHeight(
+                    int terrainHeight = GetTerrainHeight(
                         worldX,
                         worldZ,
                         climate);
 
+                    // Гидрология накладывается поверх базового рельефа.
+                    // Важно: биом определяется по исходной высоте, чтобы
+                    // русло реки не превращало окружающую сушу в Ocean.
+                    float riverStrength = HydrologySampler.GetRiverStrength(
+                        seed,
+                        worldX,
+                        worldZ,
+                        climate.Continentalness);
+
+                    bool river = terrainHeight > oceanWaterLevel &&
+                                 terrainHeight < maxTerrainHeight - 2 &&
+                                 riverStrength > 0.15f;
+
+                    bool pond = false;
+
+                    if (!river &&
+                        terrainHeight > oceanWaterLevel &&
+                        terrainHeight <= plainsHeight + 10)
+                    {
+                        float pondStrength =
+                            HydrologySampler.GetPondStrength(
+                                seed,
+                                worldX,
+                                worldZ);
+
+                        pond =
+                            pondStrength > 0.05f &&
+                            IsLocalLowland(worldX, worldZ, terrainHeight) &&
+                            terrainHeight <= mountainHeight &&
+                            climate.Continentalness > 0.45f;
+                    }
+
+                    int height = terrainHeight;
+
+                    if (river)
+                    {
+                        int riverDepth = Mathf.RoundToInt(
+                            Mathf.Lerp(2f, 4f, riverStrength));
+
+                        height = Mathf.Max(
+                            oceanWaterLevel + 1,
+                            terrainHeight - riverDepth);
+                    }
+                    else if (pond)
+                    {
+                        int pondDepth = 1 + Mathf.FloorToInt(
+                            HydrologySampler.GetPondStrength(
+                                seed,
+                                worldX,
+                                worldZ) * 2f);
+
+                        height = Mathf.Max(
+                            oceanWaterLevel + 1,
+                            terrainHeight - pondDepth);
+                    }
+
                     int biomeHeight = GetBiomeHeightForBiome(
                         worldX,
                         worldZ,
-                        height);
+                        terrainHeight);
 
                     // Вода определяется физической высотой рельефа,
                     // поэтому суша никогда не может получить Ocean из-за
@@ -255,9 +311,20 @@ namespace Voxel
                     // появляется только в самых низких участках.
                     int waterLevel = -1;
 
-                    if (height < oceanWaterLevel)
+                    if (terrainHeight < oceanWaterLevel)
                     {
+                        // Океан использует исходный рельеф.
                         waterLevel = oceanWaterLevel;
+                    }
+                    else if (river)
+                    {
+                        // Река лежит немного ниже берегов.
+                        waterLevel = terrainHeight - 1;
+                    }
+                    else if (pond)
+                    {
+                        // Небольшой пруд занимает локальную низину.
+                        waterLevel = terrainHeight;
                     }
                     else if (biome.Type == BiomeType.Swamp &&
                              height < swampWaterLevel &&
@@ -303,6 +370,62 @@ namespace Voxel
             }
 
             return chunk;
+        }
+
+        private bool IsLocalLowland(
+            int worldX,
+            int worldZ,
+            int height)
+        {
+            int sampleStep = 3;
+
+            int north = GetTerrainHeightAtWorld(
+                worldX,
+                worldZ + sampleStep);
+
+            int south = GetTerrainHeightAtWorld(
+                worldX,
+                worldZ - sampleStep);
+
+            int east = GetTerrainHeightAtWorld(
+                worldX + sampleStep,
+                worldZ);
+
+            int west = GetTerrainHeightAtWorld(
+                worldX - sampleStep,
+                worldZ);
+
+            int minimumNeighbour = Mathf.Min(
+                Mathf.Min(north, south),
+                Mathf.Min(east, west));
+
+            int maximumNeighbour = Mathf.Max(
+                Mathf.Max(north, south),
+                Mathf.Max(east, west));
+
+            // Нужна небольшая естественная впадина, а не просто
+            // случайная точка на равнине.
+            return height <= minimumNeighbour + 1 &&
+                   maximumNeighbour - height >= 1;
+        }
+
+        private int GetTerrainHeightAtWorld(
+            int worldX,
+            int worldZ)
+        {
+            ClimatePoint climate = ClimateSampler.Sample(
+                seed,
+                worldX,
+                worldZ,
+                temperatureScale,
+                humidityScale,
+                continentalnessScale,
+                erosionScale);
+
+            return GetTerrainHeight(
+                worldX,
+                worldZ,
+                climate);
         }
 
         /// <summary>
