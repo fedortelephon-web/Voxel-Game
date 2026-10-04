@@ -63,6 +63,8 @@ namespace Voxel
         private Material _runtimeBlockMaterial;
         private Transform _player;
         private Vector2Int _currentPlayerChunk;
+        private Vector2Int _lastCacheTrimChunk;
+        private bool _cacheTrimInitialized;
         private bool _streamingInitialized;
 
         private bool _initialWorldGenerationPending;
@@ -140,6 +142,27 @@ namespace Voxel
                 return;
 
             _currentPlayerChunk = playerChunk;
+
+            // Кэш генератора ограничиваем не на каждом шаге, а раз в несколько
+            // чанков, чтобы очистка сама не создавала заметных CPU-пиков.
+            if (!_cacheTrimInitialized ||
+                GetChunkDistanceSquared(
+                    playerChunk,
+                    _lastCacheTrimChunk) >= 16)
+            {
+                int cacheRadius =
+                    loadDistanceChunks * ChunkData.SizeX + 32;
+
+                worldGenerator.TrimGenerationCaches(
+                    playerChunk.x * ChunkData.SizeX +
+                        ChunkData.SizeX / 2,
+                    playerChunk.y * ChunkData.SizeZ +
+                        ChunkData.SizeZ / 2,
+                    cacheRadius);
+
+                _lastCacheTrimChunk = playerChunk;
+                _cacheTrimInitialized = true;
+            }
 
             var unload = new List<Vector2Int>();
 
@@ -1086,6 +1109,7 @@ namespace Voxel
             _dirtyChunks.Clear();
 
             _currentPlayerChunk = Vector2Int.zero;
+            _cacheTrimInitialized = false;
             _streamingInitialized = false;
             _initialWorldGenerationPending = false;
             _initialVisibleMeshBuildPending = false;
