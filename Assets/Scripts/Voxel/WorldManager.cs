@@ -31,6 +31,16 @@ namespace Voxel
 
         public int ChunkCount => _chunks.Count;
 
+        // Диагностика производительности. Значения нужны для профилирования
+        // WebGL/Yandex Games и не влияют на генерацию мира.
+        public float LastWorldGenerationMs { get; private set; }
+        public float LastChunkGenerationMs { get; private set; }
+        public float MaxChunkGenerationMs { get; private set; }
+        public float LastMeshRebuildMs { get; private set; }
+        public float MaxMeshRebuildMs { get; private set; }
+        public int TotalMeshVertices { get; private set; }
+        public int TotalMeshTriangles { get; private set; }
+
         /// <summary>Awake выполняется раньше Start других скриптов: мир готов до загрузки сейва.</summary>
         private void Awake()
         {
@@ -40,6 +50,10 @@ namespace Voxel
         /// <summary>Создать мир из чанков вокруг центрального чанка.</summary>
         private void GenerateWorld()
         {
+            float startTime = Time.realtimeSinceStartup;
+            MaxChunkGenerationMs = 0f;
+            MaxMeshRebuildMs = 0f;
+
             for (int chunkX = WorldMinChunkX; chunkX < WorldMinChunkX + WorldSizeX; chunkX++)
             {
                 for (int chunkZ = WorldMinChunkZ; chunkZ < WorldMinChunkZ + WorldSizeZ; chunkZ++)
@@ -49,6 +63,8 @@ namespace Voxel
             }
 
             RebuildAllMeshes();
+            LastWorldGenerationMs =
+                (Time.realtimeSinceStartup - startTime) * 1000f;
 
             worldGenerator.LogBiomeMap(
                 WorldMinChunkX * ChunkData.SizeX,
@@ -63,7 +79,14 @@ namespace Voxel
         {
             var coord = new Vector2Int(chunkX, chunkZ);
 
+            float startTime = Time.realtimeSinceStartup;
             ChunkData chunk = worldGenerator.GenerateChunk(chunkX, chunkZ);
+            LastChunkGenerationMs =
+                (Time.realtimeSinceStartup - startTime) * 1000f;
+            MaxChunkGenerationMs = Mathf.Max(
+                MaxChunkGenerationMs,
+                LastChunkGenerationMs);
+
             _chunks[coord] = chunk;
 
             GameObject chunkObject = new GameObject($"Chunk_{chunkX}_{chunkZ}");
@@ -294,7 +317,18 @@ namespace Voxel
             if (!_meshFilters.TryGetValue(coord, out MeshFilter meshFilter))
                 return;
 
-            Mesh newMesh = ChunkMesher.BuildMesh(chunk, worldGenerator, coord.x, coord.y);
+            float startTime = Time.realtimeSinceStartup;
+            Mesh newMesh = ChunkMesher.BuildMesh(
+                chunk,
+                worldGenerator,
+                coord.x,
+                coord.y);
+
+            LastMeshRebuildMs =
+                (Time.realtimeSinceStartup - startTime) * 1000f;
+            MaxMeshRebuildMs = Mathf.Max(
+                MaxMeshRebuildMs,
+                LastMeshRebuildMs);
 
             if (_chunkMeshes.TryGetValue(coord, out Mesh oldMesh))
             {
@@ -304,6 +338,8 @@ namespace Voxel
 
             _chunkMeshes[coord] = newMesh;
             meshFilter.sharedMesh = newMesh;
+
+            RecalculateMeshTotals();
         }
 
         /// <summary>Перестроить меши всех чанков.</summary>
@@ -311,6 +347,26 @@ namespace Voxel
         {
             foreach (Vector2Int coord in _chunks.Keys)
                 RebuildChunk(coord);
+        }
+
+        private void RecalculateMeshTotals()
+        {
+            int vertices = 0;
+            int triangles = 0;
+
+            foreach (Mesh mesh in _chunkMeshes.Values)
+            {
+                if (mesh == null)
+                    continue;
+
+                vertices += mesh.vertexCount;
+
+                if (mesh.subMeshCount > 0)
+                    triangles += (int)(mesh.GetIndexCount(0) / 3);
+            }
+
+            TotalMeshVertices = vertices;
+            TotalMeshTriangles = triangles;
         }
 
         /// <summary>Удалить все объекты чанков.</summary>
@@ -325,6 +381,8 @@ namespace Voxel
             _chunkMeshes.Clear();
             _meshFilters.Clear();
             _chunks.Clear();
+            TotalMeshVertices = 0;
+            TotalMeshTriangles = 0;
 
             for (int i = transform.childCount - 1; i >= 0; i--)
                 Destroy(transform.GetChild(i).gameObject);
