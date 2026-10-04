@@ -943,10 +943,12 @@ namespace Voxel
             TotalMeshVertices +=
                 mesh.vertexCount;
 
-            if (mesh.subMeshCount > 0)
+            for (int subMesh = 0;
+                 subMesh < mesh.subMeshCount;
+                 subMesh++)
             {
                 TotalMeshTriangles +=
-                    (int)(mesh.GetIndexCount(0) / 3);
+                    (int)(mesh.GetIndexCount(subMesh) / 3);
             }
         }
 
@@ -963,10 +965,12 @@ namespace Voxel
             TotalMeshVertices -=
                 mesh.vertexCount;
 
-            if (mesh.subMeshCount > 0)
+            for (int subMesh = 0;
+                 subMesh < mesh.subMeshCount;
+                 subMesh++)
             {
                 TotalMeshTriangles -=
-                    (int)(mesh.GetIndexCount(0) / 3);
+                    (int)(mesh.GetIndexCount(subMesh) / 3);
             }
 
             TotalMeshVertices =
