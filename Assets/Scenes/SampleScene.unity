@@ -584,6 +584,8 @@ MonoBehaviour:
   terrainScale: 0.008
   detailScale: 0.035
   mountainScale: 0.004
+  biomeHeightVariation: 20
+  biomeHeightVariationScale: 0.012
   temperatureScale: 0.015
   humidityScale: 0.012
   continentalnessScale: 0.006
