@@ -39,11 +39,31 @@ namespace Voxel
         /// </summary>
         public ChunkData GenerateChunk(int chunkX, int chunkZ)
         {
+            Debug.Log(
+                $"WorldGenerator: генерация чанка ({chunkX}, {chunkZ}). " +
+                $"Seed={seed}, " +
+                $"TemperatureScale={temperatureScale}, " +
+                $"HumidityScale={humidityScale}, " +
+                $"ContinentalnessScale={continentalnessScale}, " +
+                $"ErosionScale={erosionScale}");
+
             var chunk = new ChunkData();
             var heights = new int[ChunkData.SizeX, ChunkData.SizeZ];
             var biomes = new BiomeDefinition[
                 ChunkData.SizeX,
                 ChunkData.SizeZ];
+
+            int[] biomeCounts =
+                new int[Enum.GetValues(typeof(BiomeType)).Length];
+
+            float minTemperature = 1f;
+            float maxTemperature = 0f;
+            float minHumidity = 1f;
+            float maxHumidity = 0f;
+            float minContinentalness = 1f;
+            float maxContinentalness = 0f;
+            float minErosion = 1f;
+            float maxErosion = 0f;
 
             for (int x = 0; x < ChunkData.SizeX; x++)
             {
@@ -61,8 +81,42 @@ namespace Voxel
                         continentalnessScale,
                         erosionScale);
 
+                    minTemperature = Mathf.Min(
+                        minTemperature,
+                        climate.Temperature);
+
+                    maxTemperature = Mathf.Max(
+                        maxTemperature,
+                        climate.Temperature);
+
+                    minHumidity = Mathf.Min(
+                        minHumidity,
+                        climate.Humidity);
+
+                    maxHumidity = Mathf.Max(
+                        maxHumidity,
+                        climate.Humidity);
+
+                    minContinentalness = Mathf.Min(
+                        minContinentalness,
+                        climate.Continentalness);
+
+                    maxContinentalness = Mathf.Max(
+                        maxContinentalness,
+                        climate.Continentalness);
+
+                    minErosion = Mathf.Min(
+                        minErosion,
+                        climate.Erosion);
+
+                    maxErosion = Mathf.Max(
+                        maxErosion,
+                        climate.Erosion);
+
                     BiomeDefinition biome =
                         BiomeResolver.Resolve(climate);
+
+                    biomeCounts[(int)biome.Type]++;
 
                     biomes[x, z] = biome;
 
@@ -99,6 +153,20 @@ namespace Voxel
                     }
                 }
             }
+
+            Debug.Log(
+                $"WorldGenerator: чанк ({chunkX}, {chunkZ}) — " +
+                $"Plains={biomeCounts[(int)BiomeType.Plains]}, " +
+                $"Forest={biomeCounts[(int)BiomeType.Forest]}, " +
+                $"Desert={biomeCounts[(int)BiomeType.Desert]}, " +
+                $"Taiga={biomeCounts[(int)BiomeType.Taiga]}, " +
+                $"Mountains={biomeCounts[(int)BiomeType.Mountains]}, " +
+                $"Swamp={biomeCounts[(int)BiomeType.Swamp]}. " +
+                $"Climate: " +
+                $"T={minTemperature:F2}-{maxTemperature:F2}, " +
+                $"H={minHumidity:F2}-{maxHumidity:F2}, " +
+                $"C={minContinentalness:F2}-{maxContinentalness:F2}, " +
+                $"E={minErosion:F2}-{maxErosion:F2}");
 
             if (generateTrees)
                 PlantTrees(
