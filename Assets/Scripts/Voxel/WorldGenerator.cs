@@ -921,19 +921,38 @@ namespace Voxel
 
                         if (biome.Type == BiomeType.Taiga)
                         {
-                            // Ель: нижняя часть кроны выступает на 2 блока
-                            // от ствола, после чего крона постепенно сужается
-                            // к верхушке.
+                            // Ель состоит из отдельных ярусов:
+                            // широкий ярус -> узкий ярус -> широкий ярус.
+                            // При этом вся крона постепенно сужается к верхушке.
                             float taigaProgress = Mathf.InverseLerp(
                                 canopyBottom,
                                 trunk - 1,
                                 dy);
 
-                            radius = Mathf.Clamp(
-                                Mathf.RoundToInt(
-                                    Mathf.Lerp(2f, 1f, taigaProgress)),
-                                1,
-                                2);
+                            int layer = (dy - canopyBottom) / 2;
+
+                            // Детерминированное разнообразие: у разных елей
+                            // первый ярус может быть широким или узким.
+                            bool wideLayer = ((layer + treeSeed) & 1) == 0;
+
+                            int baseRadius = Mathf.RoundToInt(
+                                Mathf.Lerp(2f, 1f, taigaProgress));
+
+                            radius = wideLayer
+                                ? baseRadius
+                                : Mathf.Max(1, baseRadius - 1);
+
+                            // Нижний ярус всегда заметный.
+                            if (dy == canopyBottom)
+                                radius = 2;
+
+                            // Иногда нижний широкий ярус продолжается дольше.
+                            if ((treeSeed & 3) == 0 &&
+                                layer == 1 &&
+                                taigaProgress < 0.55f)
+                            {
+                                radius = 2;
+                            }
 
                             // Самая верхушка — один блок листвы.
                             if (dy == trunk)
