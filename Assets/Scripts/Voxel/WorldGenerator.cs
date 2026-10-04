@@ -808,10 +808,10 @@ namespace Voxel
                             break;
 
                         case BiomeType.Taiga:
-                            // Тайга — высокие стройные ели с узкой
-                            // ярусной конической кроной.
+                            // Высокие стройные ели с ванильной
+                            // ярусной кроной. Радиус: 2 или 3 блока.
                             trunk = 11 + rng.Next(0, 4);
-                            canopyRadius = 2;
+                            canopyRadius = 2 + rng.Next(0, 2);
                             canopyBottom = 2;
                             break;
 
@@ -921,42 +921,55 @@ namespace Voxel
 
                         if (biome.Type == BiomeType.Taiga)
                         {
-                            // Ель состоит из отдельных ярусов:
-                            // широкий ярус -> узкий ярус -> широкий ярус.
-                            // При этом вся крона постепенно сужается к верхушке.
-                            float taigaProgress = Mathf.InverseLerp(
-                                canopyBottom,
-                                trunk - 1,
-                                dy);
+                            // Используем тот же принцип, что и ванильный
+                            // Minecraft SpruceFoliagePlacer: радиус кроны
+                            // растёт ступенчато, а после достижения текущего
+                            // максимума сбрасывается. Получаются отдельные
+                            // ярусы, которые постепенно становятся шире вниз.
+                            //
+                            // В Minecraft для ели используются:
+                            // radius = 2..3, начальный радиус = 0..1,
+                            // а высота кроны зависит от высоты ствола.
+                            // Здесь эти параметры адаптированы под наш voxel-мир.
+                            int spruceFoliageHeight = Mathf.Max(
+                                4,
+                                trunk - rng.Next(1, 3));
 
-                            int layer = (dy - canopyBottom) / 2;
+                            spruceFoliageHeight = Mathf.Min(
+                                spruceFoliageHeight,
+                                trunk - canopyBottom + 1);
 
-                            // Детерминированное разнообразие: у разных елей
-                            // первый ярус может быть широким или узким.
-                            bool wideLayer = ((layer + treeSeed) & 1) == 0;
+                            int currentRadius = rng.Next(0, 2);
+                            int radiusCeiling = 1;
+                            int nextRadius = 0;
 
-                            int baseRadius = Mathf.RoundToInt(
-                                Mathf.Lerp(2f, 1f, taigaProgress));
+                            // Для разных елей максимальный радиус различается:
+                            // 2 или 3 блока от ствола.
+                            int spruceMaxRadius = canopyRadius;
 
-                            radius = wideLayer
-                                ? baseRadius
-                                : Mathf.Max(1, baseRadius - 1);
+                            int rowFromTop = trunk - dy;
 
-                            // Нижний ярус всегда заметный.
-                            if (dy == canopyBottom)
-                                radius = 2;
-
-                            // Иногда нижний широкий ярус продолжается дольше.
-                            if ((treeSeed & 3) == 0 &&
-                                layer == 1 &&
-                                taigaProgress < 0.55f)
+                            if (rowFromTop >= 0 &&
+                                rowFromTop < spruceFoliageHeight)
                             {
-                                radius = 2;
-                            }
+                                radius = currentRadius;
 
-                            // Самая верхушка — один блок листвы.
-                            if (dy == trunk)
-                                radius = 0;
+                                // Точная логика перехода между ярусами
+                                // из SpruceFoliagePlacer.
+                                if (currentRadius >= radiusCeiling)
+                                {
+                                    currentRadius = nextRadius;
+                                    nextRadius = 1;
+
+                                    radiusCeiling = Mathf.Min(
+                                        radiusCeiling + 1,
+                                        spruceMaxRadius);
+                                }
+                                else
+                                {
+                                    currentRadius++;
+                                }
+                            }
                         }
                         else if (biome.Type == BiomeType.Swamp)
                         {
