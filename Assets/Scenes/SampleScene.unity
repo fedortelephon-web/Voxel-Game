@@ -577,14 +577,17 @@ MonoBehaviour:
   m_Name: 
   m_EditorClassIdentifier: Assembly-CSharp::Voxel.WorldGenerator
   seed: 5
-  baseHeight: 8
-  heightVariation: 8
-  terrainScale: 0.025
-  detailScale: 0.08
-  temperatureScale: 0.007
-  humidityScale: 0.0065
-  continentalnessScale: 0.008
-  erosionScale: 0.006
+  plainsHeight: 64
+  oceanHeight: 50
+  mountainHeight: 88
+  maxTerrainHeight: 128
+  terrainScale: 0.008
+  detailScale: 0.035
+  mountainScale: 0.004
+  temperatureScale: 0.015
+  humidityScale: 0.012
+  continentalnessScale: 0.006
+  erosionScale: 0.012
   dirtDepth: 3
   generateTrees: 1
 --- !u!4 &627250245
