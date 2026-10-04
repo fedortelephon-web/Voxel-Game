@@ -114,18 +114,6 @@ namespace Voxel
                 ChunkData.SizeX,
                 ChunkData.SizeZ];
 
-            int[] biomeCounts =
-                new int[Enum.GetValues(typeof(BiomeType)).Length];
-
-            float minTemperature = 1f;
-            float maxTemperature = 0f;
-            float minHumidity = 1f;
-            float maxHumidity = 0f;
-            float minContinentalness = 1f;
-            float maxContinentalness = 0f;
-            float minErosion = 1f;
-            float maxErosion = 0f;
-
             for (int x = 0; x < ChunkData.SizeX; x++)
             {
                 for (int z = 0; z < ChunkData.SizeZ; z++)
@@ -141,38 +129,6 @@ namespace Voxel
                         humidityScale,
                         continentalnessScale,
                         erosionScale);
-
-                    minTemperature = Mathf.Min(
-                        minTemperature,
-                        climate.Temperature);
-
-                    maxTemperature = Mathf.Max(
-                        maxTemperature,
-                        climate.Temperature);
-
-                    minHumidity = Mathf.Min(
-                        minHumidity,
-                        climate.Humidity);
-
-                    maxHumidity = Mathf.Max(
-                        maxHumidity,
-                        climate.Humidity);
-
-                    minContinentalness = Mathf.Min(
-                        minContinentalness,
-                        climate.Continentalness);
-
-                    maxContinentalness = Mathf.Max(
-                        maxContinentalness,
-                        climate.Continentalness);
-
-                    minErosion = Mathf.Min(
-                        minErosion,
-                        climate.Erosion);
-
-                    maxErosion = Mathf.Max(
-                        maxErosion,
-                        climate.Erosion);
 
                     int height = GetTerrainHeight(
                         worldX,
@@ -203,8 +159,6 @@ namespace Voxel
                             climate,
                             biomeHeight);
                     }
-
-                    biomeCounts[(int)biome.Type]++;
 
                     biomes[x, z] = biome;
                     biomeCache[GetWorldColumnKey(worldX, worldZ)] = biome.Type;
@@ -269,20 +223,6 @@ namespace Voxel
                 }
             }
 
-            Debug.Log(
-                $"WorldGenerator: чанк ({chunkX}, {chunkZ}) — " +
-                $"Plains={biomeCounts[(int)BiomeType.Plains]}, " +
-                $"Forest={biomeCounts[(int)BiomeType.Forest]}, " +
-                $"Desert={biomeCounts[(int)BiomeType.Desert]}, " +
-                $"Taiga={biomeCounts[(int)BiomeType.Taiga]}, " +
-                $"Mountains={biomeCounts[(int)BiomeType.Mountains]}, " +
-                $"Swamp={biomeCounts[(int)BiomeType.Swamp]}, " +
-                $"Ocean={biomeCounts[(int)BiomeType.Ocean]}. " +
-                $"Climate: " +
-                $"T={minTemperature:F2}-{maxTemperature:F2}, " +
-                $"H={minHumidity:F2}-{maxHumidity:F2}, " +
-                $"C={minContinentalness:F2}-{maxContinentalness:F2}, " +
-                $"E={minErosion:F2}-{maxErosion:F2}");
 
             if (generateTrees)
             {
