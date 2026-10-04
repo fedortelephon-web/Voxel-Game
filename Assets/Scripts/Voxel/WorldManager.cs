@@ -24,7 +24,10 @@ namespace Voxel
         private readonly Dictionary<Vector2Int, Mesh> _chunkMeshes =
             new Dictionary<Vector2Int, Mesh>();
 
-        private const int WorldRadius = 4;
+        private const int WorldSizeX = 32;
+        private const int WorldSizeZ = 32;
+        private const int WorldMinChunkX = -WorldSizeX / 2;
+        private const int WorldMinChunkZ = -WorldSizeZ / 2;
 
         public int ChunkCount => _chunks.Count;
 
@@ -37,9 +40,9 @@ namespace Voxel
         /// <summary>Создать мир из чанков вокруг центрального чанка.</summary>
         private void GenerateWorld()
         {
-            for (int chunkX = -WorldRadius; chunkX <= WorldRadius; chunkX++)
+            for (int chunkX = WorldMinChunkX; chunkX < WorldMinChunkX + WorldSizeX; chunkX++)
             {
-                for (int chunkZ = -WorldRadius; chunkZ <= WorldRadius; chunkZ++)
+                for (int chunkZ = WorldMinChunkZ; chunkZ < WorldMinChunkZ + WorldSizeZ; chunkZ++)
                 {
                     CreateChunk(chunkX, chunkZ);
                 }
@@ -48,11 +51,11 @@ namespace Voxel
             RebuildAllMeshes();
 
             worldGenerator.LogBiomeMap(
-                -WorldRadius * ChunkData.SizeX,
-                (WorldRadius + 1) * ChunkData.SizeX,
-                -WorldRadius * ChunkData.SizeZ,
-                (WorldRadius + 1) * ChunkData.SizeZ,
-                4);
+                WorldMinChunkX * ChunkData.SizeX,
+                (WorldMinChunkX + WorldSizeX) * ChunkData.SizeX,
+                WorldMinChunkZ * ChunkData.SizeZ,
+                (WorldMinChunkZ + WorldSizeZ) * ChunkData.SizeZ,
+                16);
         }
 
         /// <summary>Создать один чанк и его объект в сцене.</summary>
@@ -134,13 +137,20 @@ namespace Voxel
             WorldChanged?.Invoke();
         }
 
-        /// <summary>Пересоздать мир с нуля.</summary>
+        /// <summary>Пересоздать мир с нуля с текущим seed.</summary>
         public void Regenerate()
         {
             ClearWorld();
 
             GenerateWorld();
             WorldChanged?.Invoke();
+        }
+
+        /// <summary>Пересоздать мир с нуля с указанным seed.</summary>
+        public void Regenerate(int newSeed)
+        {
+            worldGenerator.SetSeed(newSeed);
+            Regenerate();
         }
 
         /// <summary>Байты всех чанков для сохранения.</summary>
@@ -156,9 +166,9 @@ namespace Voxel
 
             int offset = 0;
 
-            for (int chunkX = -WorldRadius; chunkX <= WorldRadius; chunkX++)
+            for (int chunkX = WorldMinChunkX; chunkX < WorldMinChunkX + WorldSizeX; chunkX++)
             {
-                for (int chunkZ = -WorldRadius; chunkZ <= WorldRadius; chunkZ++)
+                for (int chunkZ = WorldMinChunkZ; chunkZ < WorldMinChunkZ + WorldSizeZ; chunkZ++)
                 {
                     Vector2Int coord = new Vector2Int(chunkX, chunkZ);
 
@@ -195,9 +205,9 @@ namespace Voxel
 
     int offset = 0;
 
-    for (int chunkX = -WorldRadius; chunkX <= WorldRadius; chunkX++)
+    for (int chunkX = WorldMinChunkX; chunkX < WorldMinChunkX + WorldSizeX; chunkX++)
     {
-        for (int chunkZ = -WorldRadius; chunkZ <= WorldRadius; chunkZ++)
+        for (int chunkZ = WorldMinChunkZ; chunkZ < WorldMinChunkZ + WorldSizeZ; chunkZ++)
         {
             Vector2Int coord = new Vector2Int(chunkX, chunkZ);
 
