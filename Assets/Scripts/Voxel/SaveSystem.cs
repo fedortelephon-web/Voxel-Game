@@ -10,7 +10,7 @@ namespace Voxel
     /// </summary>
     public class SaveSystem : MonoBehaviour
     {
-        private const string SaveKey = "voxel_save_v5";
+        private const string SaveKey = "voxel_save_v6";
 
         [Header("Сохранение")]
         [SerializeField] private float saveDelay = 1f; // задержка, чтобы не писать на каждый клик
@@ -131,8 +131,13 @@ namespace Voxel
 
                 byte[] blockBytes = Convert.FromBase64String(data.blocksBase64);
 
+                const int WorldChunkCount = 9;
+
                 int expectedBlockBytes =
-                    ChunkData.SizeX * ChunkData.SizeY * ChunkData.SizeZ;
+                    ChunkData.SizeX *
+                    ChunkData.SizeY *
+                    ChunkData.SizeZ *
+                    WorldChunkCount;
 
                 if (blockBytes.Length != expectedBlockBytes)
                 {
@@ -153,12 +158,14 @@ namespace Voxel
 
                 if (!_world.SetBlocksBytes(blockBytes))
                 {
-                    Debug.LogWarning("SaveSystem: не удалось загрузить данные мира.");
+                    Debug.LogError(
+                        $"SaveSystem: не удалось загрузить данные мира. " +
+                        $"Получено байт: {blockBytes.Length}.");
                     return;
                 }
 
+                Debug.Log($"SaveSystem: загружена позиция игрока {data.playerPosition}");
                 _player.position = data.playerPosition;
-
                 if (!_inventory.ApplySaveData(
                         data.slotTypes,
                         data.slotCounts,

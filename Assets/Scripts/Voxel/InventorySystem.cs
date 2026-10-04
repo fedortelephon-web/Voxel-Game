@@ -259,7 +259,10 @@ public class InventorySystem : MonoBehaviour
 
         for (int i = 0; i < SlotCount; i++)
         {
-            if (!System.Enum.IsDefined(typeof(ItemType), types[i]))
+            if (types[i] < byte.MinValue || types[i] > byte.MaxValue)
+                return false;
+
+            if (!System.Enum.IsDefined(typeof(ItemType), (byte)types[i]))
                 return false;
 
             if (counts[i] < 0 || counts[i] > MaxStack)

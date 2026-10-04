@@ -1,165 +1,287 @@
 using System;
+using System.Collections.Generic;
 using UnityEngine;
 
 namespace Voxel
 {
     /// <summary>
-    /// Управляет одним чанком: хранение данных, пересборка меша при изменениях.
-    /// Позже заменим на систему чанков.
+    /// Управляет несколькими чанками мира, их генерацией и пересборкой мешей.
     /// </summary>
     public class WorldManager : MonoBehaviour
     {
         [SerializeField] private Material blockMaterial;
+        [SerializeField] private WorldGenerator worldGenerator;
 
         /// <summary>Срабатывает после любого изменения блока — для системы сохранения.</summary>
         public event Action WorldChanged;
 
-        private ChunkData _chunk;
-        private MeshFilter _meshFilter;
-        private Mesh _chunkMesh;
+        private readonly Dictionary<Vector2Int, ChunkData> _chunks =
+            new Dictionary<Vector2Int, ChunkData>();
+
+        private readonly Dictionary<Vector2Int, MeshFilter> _meshFilters =
+            new Dictionary<Vector2Int, MeshFilter>();
+
+        private readonly Dictionary<Vector2Int, Mesh> _chunkMeshes =
+            new Dictionary<Vector2Int, Mesh>();
+
+        private const int WorldRadius = 1;
 
         /// <summary>Awake выполняется раньше Start других скриптов: мир готов до загрузки сейва.</summary>
         private void Awake()
         {
-            _meshFilter = gameObject.AddComponent<MeshFilter>();
-            MeshRenderer renderer = gameObject.AddComponent<MeshRenderer>();
+            GenerateWorld();
+        }
+
+        /// <summary>Создать мир из чанков вокруг центрального чанка.</summary>
+        private void GenerateWorld()
+        {
+            for (int chunkX = -WorldRadius; chunkX <= WorldRadius; chunkX++)
+            {
+                for (int chunkZ = -WorldRadius; chunkZ <= WorldRadius; chunkZ++)
+                {
+                    CreateChunk(chunkX, chunkZ);
+                }
+            }
+
+            RebuildAllMeshes();
+        }
+
+        /// <summary>Создать один чанк и его объект в сцене.</summary>
+        private void CreateChunk(int chunkX, int chunkZ)
+        {
+            var coord = new Vector2Int(chunkX, chunkZ);
+
+            ChunkData chunk = worldGenerator.GenerateChunk(chunkX, chunkZ);
+            _chunks[coord] = chunk;
+
+            GameObject chunkObject = new GameObject($"Chunk_{chunkX}_{chunkZ}");
+            chunkObject.transform.SetParent(transform);
+            chunkObject.transform.localPosition = new Vector3(
+                chunkX * ChunkData.SizeX,
+                0f,
+                chunkZ * ChunkData.SizeZ
+            );
+
+            MeshFilter meshFilter = chunkObject.AddComponent<MeshFilter>();
+            MeshRenderer renderer = chunkObject.AddComponent<MeshRenderer>();
+
             renderer.material = blockMaterial;
             renderer.material.mainTexture = VoxelTextures.Atlas;
-            _chunk = GenerateTerrain();
-            RebuildMesh();
+
+            _meshFilters[coord] = meshFilter;
         }
 
         /// <summary>Получить блок по мировым координатам.</summary>
         public BlockType GetBlock(Vector3Int worldPos)
         {
-            return _chunk.GetBlock(worldPos.x, worldPos.y, worldPos.z);
+            if (worldPos.y < 0 || worldPos.y >= ChunkData.SizeY)
+                return BlockType.Air;
+
+            Vector2Int chunkCoord = WorldToChunkCoord(worldPos);
+            Vector3Int localPos = WorldToLocal(worldPos);
+
+            if (!_chunks.TryGetValue(chunkCoord, out ChunkData chunk))
+                return BlockType.Air;
+
+            return chunk.GetBlock(localPos.x, localPos.y, localPos.z);
         }
-        /// <summary>В пределах ли мира координата (пока мир — один чанк).</summary>
+
+        /// <summary>В пределах ли мира координата.</summary>
         public bool InBounds(Vector3Int worldPos)
         {
-            return worldPos.x >= 0 && worldPos.y >= 0 && worldPos.z >= 0
-                && worldPos.x < ChunkData.SizeX
-                && worldPos.y < ChunkData.SizeY
-                && worldPos.z < ChunkData.SizeZ;
-        }
-        /// <summary>Установить блок, пересобрать меш, сообщить о изменении.</summary>
-        public void SetBlock(Vector3Int worldPos, BlockType type)
-        {
-            _chunk.SetBlock(worldPos.x, worldPos.y, worldPos.z, type);
-            RebuildMesh();
-            WorldChanged?.Invoke();
-        }
-
-        /// <summary>Пересоздать мир с нуля (новая игра).</summary>
-        public void Regenerate()
-        {
-            _chunk = GenerateTerrain();
-            RebuildMesh();
-            WorldChanged?.Invoke();
-        }
-
-        /// <summary>Байты чанка для сохранения.</summary>
-        /// <summary>Байты чанка для сохранения.</summary>
-        public byte[] GetBlocksBytes()
-        {
-            return _chunk.ToBytes();
-        }
-
-        /// <summary>Загрузить байты чанка и пересобрать меш.</summary>
-        public bool SetBlocksBytes(byte[] data)
-        {
-            if (!_chunk.FromBytes(data))
+            if (worldPos.y < 0 || worldPos.y >= ChunkData.SizeY)
                 return false;
 
-            RebuildMesh();
+            Vector2Int chunkCoord = WorldToChunkCoord(worldPos);
+            return _chunks.ContainsKey(chunkCoord);
+        }
+
+        /// <summary>Установить блок и пересобрать затронутые чанки.</summary>
+        public void SetBlock(Vector3Int worldPos, BlockType type)
+        {
+            if (!InBounds(worldPos))
+                return;
+
+            Vector2Int chunkCoord = WorldToChunkCoord(worldPos);
+            Vector3Int localPos = WorldToLocal(worldPos);
+
+            ChunkData chunk = _chunks[chunkCoord];
+            chunk.SetBlock(localPos.x, localPos.y, localPos.z, type);
+
+            RebuildChunk(chunkCoord);
+
+            if (localPos.x == 0)
+                RebuildChunk(chunkCoord + Vector2Int.left);
+
+            if (localPos.x == ChunkData.SizeX - 1)
+                RebuildChunk(chunkCoord + Vector2Int.right);
+
+            if (localPos.z == 0)
+                RebuildChunk(chunkCoord + new Vector2Int(0, -1));
+
+            if (localPos.z == ChunkData.SizeZ - 1)
+                RebuildChunk(chunkCoord + new Vector2Int(0, 1));
+
+            WorldChanged?.Invoke();
+        }
+
+        /// <summary>Пересоздать мир с нуля.</summary>
+        public void Regenerate()
+        {
+            ClearWorld();
+
+            GenerateWorld();
+            WorldChanged?.Invoke();
+        }
+
+        /// <summary>Байты всех чанков для сохранения.</summary>
+        public byte[] GetBlocksBytes()
+        {
+            int chunkCount = _chunks.Count;
+            int chunkSize =
+                ChunkData.SizeX *
+                ChunkData.SizeY *
+                ChunkData.SizeZ;
+
+            var result = new byte[chunkCount * chunkSize];
+
+            int offset = 0;
+
+            for (int chunkX = -WorldRadius; chunkX <= WorldRadius; chunkX++)
+            {
+                for (int chunkZ = -WorldRadius; chunkZ <= WorldRadius; chunkZ++)
+                {
+                    Vector2Int coord = new Vector2Int(chunkX, chunkZ);
+
+                    if (!_chunks.TryGetValue(coord, out ChunkData chunk))
+                        continue;
+
+                    byte[] data = chunk.ToBytes();
+                    Buffer.BlockCopy(data, 0, result, offset, data.Length);
+                    offset += data.Length;
+                }
+            }
+
+            return result;
+        }
+
+        /// <summary>Загрузить байты всех чанков и пересобрать меши.</summary>
+        public bool SetBlocksBytes(byte[] data)
+        {
+            int chunkSize =
+                ChunkData.SizeX *
+                ChunkData.SizeY *
+                ChunkData.SizeZ;
+
+            int expectedSize = _chunks.Count * chunkSize;
+
+            if (data == null || data.Length != expectedSize)
+                return false;
+
+            int offset = 0;
+
+            for (int chunkX = -WorldRadius; chunkX <= WorldRadius; chunkX++)
+            {
+                for (int chunkZ = -WorldRadius; chunkZ <= WorldRadius; chunkZ++)
+                {
+                    Vector2Int coord = new Vector2Int(chunkX, chunkZ);
+
+                    if (!_chunks.TryGetValue(coord, out ChunkData chunk))
+                        return false;
+
+                    byte[] chunkData = new byte[chunkSize];
+                    Buffer.BlockCopy(data, offset, chunkData, 0, chunkSize);
+
+                    if (!chunk.FromBytes(chunkData))
+                        return false;
+
+                    offset += chunkSize;
+                }
+            }
+
+            RebuildAllMeshes();
             return true;
         }
 
-        /// <summary>Перестроить меш из текущих данных чанка.</summary>
-        private void RebuildMesh()
+        /// <summary>Перевести мировую координату в координату чанка.</summary>
+        private static Vector2Int WorldToChunkCoord(Vector3Int worldPos)
         {
-            Mesh newMesh = ChunkMesher.BuildMesh(_chunk);
+            int chunkX = FloorDiv(worldPos.x, ChunkData.SizeX);
+            int chunkZ = FloorDiv(worldPos.z, ChunkData.SizeZ);
 
-            Mesh oldMesh = _chunkMesh;
-            _chunkMesh = newMesh;
-            _meshFilter.sharedMesh = _chunkMesh;
-
-            if (oldMesh != null)
-                Destroy(oldMesh);
+            return new Vector2Int(chunkX, chunkZ);
         }
 
-        /// <summary>Детерминированный рельеф: трава сверху, земля, камень.</summary>
-        /// <summary>Детерминированный рельеф: холмы, трава, земля, камень, деревья.</summary>
-        private static ChunkData GenerateTerrain()
+        /// <summary>Перевести мировую координату в локальную координату чанка.</summary>
+        private static Vector3Int WorldToLocal(Vector3Int worldPos)
         {
-            var chunk = new ChunkData();
-            var heights = new int[ChunkData.SizeX, ChunkData.SizeZ];
+            int localX = Mod(worldPos.x, ChunkData.SizeX);
+            int localZ = Mod(worldPos.z, ChunkData.SizeZ);
 
-            for (int x = 0; x < ChunkData.SizeX; x++)
-            for (int z = 0; z < ChunkData.SizeZ; z++)
-            {
-                int height = 6 + Mathf.RoundToInt(2f * Mathf.Sin(x * 0.35f) + 2f * Mathf.Cos(z * 0.3f));
-                heights[x, z] = height;
-
-                for (int y = 0; y <= height && y < ChunkData.SizeY; y++)
-                {
-                    BlockType type = y == height ? BlockType.Grass
-                        : y >= height - 2 ? BlockType.Dirt
-                        : BlockType.Stone;
-                    chunk.SetBlock(x, y, z, type);
-                }
-            }
-
-            PlantTrees(chunk, heights);
-            return chunk;
+            return new Vector3Int(localX, worldPos.y, localZ);
         }
 
-        /// <summary>Редкие деревья: ствол 4 блока и крона из листвы.</summary>
-        /// <summary>Редкие деревья: ствол, широкая крона, узкая верхушка.</summary>
-        private static void PlantTrees(ChunkData chunk, int[,] heights)
+        /// <summary>Целочисленное деление с округлением вниз.</summary>
+        private static int FloorDiv(int value, int divisor)
         {
-            var rng = new System.Random(12345);
+            int result = value / divisor;
 
-            for (int x = 2; x < ChunkData.SizeX - 2; x++)
-            for (int z = 2; z < ChunkData.SizeZ - 2; z++)
-            {
-                if (rng.NextDouble() > 0.03)
-                    continue;
+            if (value < 0 && value % divisor != 0)
+                result--;
 
-                int top = heights[x, z] + 1;
-                const int trunk = 4;
-
-                for (int i = 0; i < trunk; i++)
-                    chunk.SetBlock(x, top + i, z, BlockType.Wood);
-
-                // Два широких яруса кроны со срезанными углами
-                for (int dy = trunk - 2; dy <= trunk - 1; dy++)
-                for (int dx = -2; dx <= 2; dx++)
-                for (int dz = -2; dz <= 2; dz++)
-                {
-                    if (Mathf.Abs(dx) == 2 && Mathf.Abs(dz) == 2)
-                        continue;
-
-                    SetIfAir(chunk, x + dx, top + dy, z + dz, BlockType.Leaves);
-                }
-
-                // Узкая верхушка крестом из пяти блоков
-                SetIfAir(chunk, x, top + trunk, z, BlockType.Leaves);
-                SetIfAir(chunk, x + 1, top + trunk, z, BlockType.Leaves);
-                SetIfAir(chunk, x - 1, top + trunk, z, BlockType.Leaves);
-                SetIfAir(chunk, x, top + trunk, z + 1, BlockType.Leaves);
-                SetIfAir(chunk, x, top + trunk, z - 1, BlockType.Leaves);
-            }
+            return result;
         }
 
-        /// <summary>Ставит блок, только если клетка пустая и в пределах чанка.</summary>
-        private static void SetIfAir(ChunkData chunk, int x, int y, int z, BlockType type)
+        /// <summary>Положительный остаток для отрицательных координат.</summary>
+        private static int Mod(int value, int divisor)
         {
-            if (y >= ChunkData.SizeY)
+            int result = value % divisor;
+            return result < 0 ? result + divisor : result;
+        }
+
+        /// <summary>Перестроить меш одного чанка.</summary>
+        private void RebuildChunk(Vector2Int coord)
+        {
+            if (!_chunks.TryGetValue(coord, out ChunkData chunk))
                 return;
 
-            if (chunk.GetBlock(x, y, z) == BlockType.Air)
-                chunk.SetBlock(x, y, z, type);
+            if (!_meshFilters.TryGetValue(coord, out MeshFilter meshFilter))
+                return;
+
+            Mesh newMesh = ChunkMesher.BuildMesh(chunk);
+
+            if (_chunkMeshes.TryGetValue(coord, out Mesh oldMesh))
+            {
+                if (oldMesh != null)
+                    Destroy(oldMesh);
+            }
+
+            _chunkMeshes[coord] = newMesh;
+            meshFilter.sharedMesh = newMesh;
+        }
+
+        /// <summary>Перестроить меши всех чанков.</summary>
+        private void RebuildAllMeshes()
+        {
+            foreach (Vector2Int coord in _chunks.Keys)
+                RebuildChunk(coord);
+        }
+
+        /// <summary>Удалить все объекты чанков.</summary>
+        private void ClearWorld()
+        {
+            foreach (Mesh mesh in _chunkMeshes.Values)
+            {
+                if (mesh != null)
+                    Destroy(mesh);
+            }
+
+            _chunkMeshes.Clear();
+            _meshFilters.Clear();
+            _chunks.Clear();
+
+            for (int i = transform.childCount - 1; i >= 0; i--)
+                Destroy(transform.GetChild(i).gameObject);
         }
     }
 }
