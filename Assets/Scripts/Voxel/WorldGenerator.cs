@@ -428,6 +428,39 @@ namespace Voxel
         }
 
         /// <summary>
+        /// Получить цвет растительности для мировой колонки в зависимости от биома.
+        /// Как в Minecraft, трава и листья получают биомный оттенок при рендере.
+        /// </summary>
+        public Color GetVegetationTint(int worldX, int worldZ)
+        {
+            BiomeDefinition biome = GetBiomeAtWorldPosition(worldX, worldZ);
+
+            switch (biome.Type)
+            {
+                case BiomeType.Forest:
+                    return new Color(0.78f, 1.00f, 0.72f);
+
+                case BiomeType.Plains:
+                    return new Color(1.00f, 1.00f, 1.00f);
+
+                case BiomeType.Taiga:
+                    return new Color(0.72f, 0.88f, 1.00f);
+
+                case BiomeType.Desert:
+                    return new Color(1.00f, 0.94f, 0.68f);
+
+                case BiomeType.Swamp:
+                    return new Color(0.68f, 0.92f, 0.58f);
+
+                case BiomeType.Mountains:
+                    return new Color(0.86f, 0.94f, 0.82f);
+
+                default:
+                    return Color.white;
+            }
+        }
+
+        /// <summary>
         /// Рассчитать высоту поверхности по мировым координатам.
         /// </summary>
         private int GetTerrainHeight(
