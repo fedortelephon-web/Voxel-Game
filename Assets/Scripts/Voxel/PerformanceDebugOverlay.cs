@@ -132,6 +132,10 @@ namespace Voxel
                     labelStyle);
 
                 GUILayout.Label(
+                    $"World mesh build: {world.LastWorldMeshBuildMs:F1} ms",
+                    labelStyle);
+
+                GUILayout.Label(
                     $"Last chunk generation: {world.LastChunkGenerationMs:F2} ms",
                     labelStyle);
 
