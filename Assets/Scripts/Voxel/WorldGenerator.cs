@@ -775,7 +775,21 @@ namespace Voxel
                             trunk,
                             dy);
 
-                        int radius = canopyRadius;
+                        // Крона не должна заканчиваться плоским слоем.
+                        // Радиус сначала увеличивается к середине кроны,
+                        // а затем уменьшается к верхушке.
+                        float crownShape = Mathf.Sin(t * Mathf.PI);
+                        int radius = Mathf.RoundToInt(
+                            canopyRadius * crownShape);
+
+                        // Нижняя часть кроны не должна исчезать полностью.
+                        if (dy < trunk && radius < 1)
+                            radius = 1;
+
+                        // Верхний слой — одна точка, поэтому дерево получает
+                        // округлую/заострённую верхушку вместо плоской шапки.
+                        if (dy == trunk)
+                            radius = 0;
 
                         if (biome.Type == BiomeType.Plains)
                         {
@@ -784,7 +798,7 @@ namespace Voxel
                             if (trunk >= 7 && dy <= canopyBottom + 1)
                                 radius = Mathf.Min(radius, 2);
 
-                            if (trunk <= 4)
+                            if (trunk <= 4 && dy < trunk)
                                 radius = 1;
                         }
 
@@ -797,12 +811,18 @@ namespace Voxel
                                         2f,
                                         1f,
                                         t)));
+
+                            if (dy == trunk)
+                                radius = 0;
                         }
                         else if (biome.Type == BiomeType.Swamp)
                         {
                             radius = dy <= canopyBottom + 1
                                 ? 2
                                 : 1;
+
+                            if (dy == trunk)
+                                radius = 0;
                         }
 
                         for (int dx = -radius;
