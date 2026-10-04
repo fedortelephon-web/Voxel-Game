@@ -436,9 +436,9 @@ namespace Voxel
         /// </summary>
         public Color GetVegetationTint(int worldX, int worldZ)
         {
-            // Смешиваем цвета по ближайшим 5 блокам, чтобы граница биомов
-            // не давала резкого цветового перехода.
-            const int radius = 5;
+            // Смешиваем цвета по ближайшим 15 блокам, чтобы граница биомов
+            // переходила постепенно и без резкой полосы.
+            const int radius = 15;
             Color sum = Color.black;
             int count = 0;
 
@@ -479,17 +479,17 @@ namespace Voxel
             switch (type)
             {
                 case BiomeType.Forest:
-                    return new Color(0.45f, 1.00f, 0.30f);
+                    return new Color(0.72f, 0.95f, 0.62f);
                 case BiomeType.Plains:
-                    return new Color(1.00f, 0.95f, 0.68f);
+                    return new Color(0.90f, 0.98f, 0.72f);
                 case BiomeType.Taiga:
-                    return new Color(0.42f, 0.72f, 0.95f);
+                    return new Color(0.65f, 0.82f, 0.90f);
                 case BiomeType.Desert:
-                    return new Color(1.00f, 0.90f, 0.55f);
+                    return new Color(0.95f, 0.90f, 0.65f);
                 case BiomeType.Swamp:
-                    return new Color(0.40f, 0.72f, 0.30f);
+                    return new Color(0.62f, 0.82f, 0.55f);
                 case BiomeType.Mountains:
-                    return new Color(0.75f, 0.88f, 0.72f);
+                    return new Color(0.80f, 0.90f, 0.75f);
                 default:
                     return Color.white;
             }
@@ -882,32 +882,41 @@ namespace Voxel
 
                         if (biome.Type == BiomeType.Taiga)
                         {
-                            // Узкая ярусная крона: широкая только у основания,
-                            // затем быстро сужается к верхушке.
+                            // Ель: широкая нижняя часть (2–3 блока),
+                            // постепенно сужается до одного блока наверху.
+                            // Радиус держится по несколько уровней, поэтому
+                            // крона выглядит как набор слегка разнесённых ярусов.
                             float taigaProgress = Mathf.InverseLerp(
                                 canopyBottom,
                                 trunk - 1,
                                 dy);
 
+                            int layer = Mathf.FloorToInt(
+                                (dy - canopyBottom) / 2f);
+
+                            float layerProgress = Mathf.InverseLerp(
+                                0f,
+                                Mathf.Max(1f, (trunk - canopyBottom - 1) / 2f),
+                                layer);
+
                             radius = Mathf.Clamp(
                                 Mathf.RoundToInt(
-                                    Mathf.Lerp(
-                                        canopyRadius,
-                                        1f,
-                                        taigaProgress)),
+                                    Mathf.Lerp(3f, 1f, layerProgress)),
                                 1,
-                                canopyRadius);
+                                3);
 
-                            // Отдельные ярусы ветвей подчёркивают силуэт ели,
-                            // но не дают кроне становиться широкой.
-                            if (dy < trunk &&
-                                (dy - canopyBottom) % 3 == 0)
+                            // Ярусные диски: на каждом втором уровне ветви
+                            // чуть шире, а промежуточный уровень остаётся уже.
+                            if ((dy - canopyBottom) % 2 == 0)
                             {
-                                radius = Mathf.Min(
-                                    canopyRadius,
-                                    radius + 1);
+                                radius = Mathf.Min(3, radius + 1);
+                            }
+                            else
+                            {
+                                radius = Mathf.Max(1, radius - 1);
                             }
 
+                            // Самая верхушка — один блок листвы.
                             if (dy == trunk)
                                 radius = 0;
                         }
