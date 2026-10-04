@@ -433,28 +433,60 @@ namespace Voxel
         /// </summary>
         public Color GetVegetationTint(int worldX, int worldZ)
         {
-            BiomeDefinition biome = GetBiomeAtWorldPosition(worldX, worldZ);
+            // Смешиваем цвета по ближайшим 5 блокам, чтобы граница биомов
+            // не давала резкого цветового перехода.
+            const int radius = 5;
+            Color sum = Color.black;
+            int count = 0;
 
-            switch (biome.Type)
+            for (int dz = -radius; dz <= radius; dz++)
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                BiomeDefinition biome = GetBiomeAtWorldPosition(
+                    worldX + dx,
+                    worldZ + dz);
+
+                float distance = Mathf.Sqrt(dx * dx + dz * dz);
+                if (distance > radius)
+                    continue;
+
+                float weight = 1f - distance / radius;
+                sum += GetBaseVegetationTint(biome.Type) * weight;
+                count += 1;
+            }
+
+            if (count == 0)
+                return Color.white;
+
+            // Нормализуем по весам повторно, чтобы оттенок не темнел
+            // около границ мира.
+            float weightSum = 0f;
+            for (int dz = -radius; dz <= radius; dz++)
+            for (int dx = -radius; dx <= radius; dx++)
+            {
+                if (dx * dx + dz * dz <= radius * radius)
+                    weightSum += 1f - Mathf.Sqrt(dx * dx + dz * dz) / radius;
+            }
+
+            return sum / Mathf.Max(0.001f, weightSum);
+        }
+
+        private static Color GetBaseVegetationTint(BiomeType type)
+        {
+            switch (type)
             {
                 case BiomeType.Forest:
                     return new Color(0.78f, 1.00f, 0.72f);
-
                 case BiomeType.Plains:
                     return new Color(1.00f, 1.00f, 1.00f);
-
                 case BiomeType.Taiga:
                     return new Color(0.72f, 0.88f, 1.00f);
-
                 case BiomeType.Desert:
                     return new Color(1.00f, 0.94f, 0.68f);
-
                 case BiomeType.Swamp:
                     return new Color(0.68f, 0.92f, 0.58f);
-
                 case BiomeType.Mountains:
                     return new Color(0.86f, 0.94f, 0.82f);
-
                 default:
                     return Color.white;
             }
