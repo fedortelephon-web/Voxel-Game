@@ -333,5 +333,13 @@ namespace Voxel
             new Color(0.16f, 0.42f, 0.14f), new Color(0.22f, 0.50f, 0.17f),
             new Color(0.12f, 0.34f, 0.11f), new Color(0.26f, 0.55f, 0.20f),
         };
+
+        private static readonly Color[] Sands =
+        {
+            new Color(0.82f, 0.74f, 0.49f),
+            new Color(0.88f, 0.80f, 0.55f),
+            new Color(0.76f, 0.68f, 0.44f),
+            new Color(0.85f, 0.77f, 0.52f),
+        };
     }
 }
