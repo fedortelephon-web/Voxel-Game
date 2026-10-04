@@ -769,10 +769,10 @@ namespace Voxel
                             break;
 
                         case BiomeType.Taiga:
-                            // Тайга — хвойные деревья: высокие ели
-                            // с ярусной конической кроной.
-                            trunk = 8 + rng.Next(0, 4);
-                            canopyRadius = 3;
+                            // Тайга — высокие стройные ели с узкой
+                            // ярусной конической кроной.
+                            trunk = 11 + rng.Next(0, 4);
+                            canopyRadius = 2;
                             canopyBottom = 2;
                             break;
 
@@ -882,8 +882,8 @@ namespace Voxel
 
                         if (biome.Type == BiomeType.Taiga)
                         {
-                            // Ярусная крона: широкие нижние ветви,
-                            // более узкие верхние и отдельная верхушка.
+                            // Узкая ярусная крона: широкая только у основания,
+                            // затем быстро сужается к верхушке.
                             float taigaProgress = Mathf.InverseLerp(
                                 canopyBottom,
                                 trunk - 1,
@@ -898,10 +898,10 @@ namespace Voxel
                                 1,
                                 canopyRadius);
 
-                            // Дополнительные ярусы ветвей делают силуэт
-                            // похожим именно на ель, а не на обычное дерево.
+                            // Отдельные ярусы ветвей подчёркивают силуэт ели,
+                            // но не дают кроне становиться широкой.
                             if (dy < trunk &&
-                                (dy - canopyBottom) % 2 == 0)
+                                (dy - canopyBottom) % 3 == 0)
                             {
                                 radius = Mathf.Min(
                                     canopyRadius,
