@@ -34,6 +34,12 @@ namespace Voxel
         [Tooltip("Размер горных массивов. Меньше = крупнее горы.")]
         [SerializeField, Min(0.0001f)] private float mountainScale = 0.004f;
 
+        [Tooltip("Максимальное отклонение высоты при определении биома.")]
+        [SerializeField, Min(0f)] private float biomeHeightVariation = 20f;
+
+        [Tooltip("Размер областей отклонения границ биомов. Меньше = крупнее области.")]
+        [SerializeField, Min(0.0001f)] private float biomeHeightVariationScale = 0.012f;
+
         [Header("Climate Noise")]
         [Tooltip("Размер температурных регионов. Меньше = крупнее регионы.")]
         [SerializeField, Min(0.0001f)] private float temperatureScale = 0.015f;
@@ -148,10 +154,15 @@ namespace Voxel
                         worldZ,
                         climate);
 
+                    int biomeHeight = GetBiomeHeightForBiome(
+                        worldX,
+                        worldZ,
+                        height);
+
                     BiomeDefinition biome =
                         BiomeResolver.Resolve(
                             climate,
-                            height);
+                            biomeHeight);
 
                     biomeCounts[(int)biome.Type]++;
 
@@ -254,10 +265,15 @@ namespace Voxel
                         sampleZ,
                         climate);
 
+                    int biomeHeight = GetBiomeHeightForBiome(
+                        sampleX,
+                        sampleZ,
+                        height);
+
                     BiomeDefinition biome =
                         BiomeResolver.Resolve(
                             climate,
-                            height);
+                            biomeHeight);
 
                     map.Append(GetBiomeSymbol(biome.Type));
                 }
@@ -302,6 +318,32 @@ namespace Voxel
                 default:
                     return '?';
             }
+        }
+
+        /// <summary>
+        /// Даёт биомной системе высоту с плавным детерминированным
+        /// отклонением в пределах ±biomeHeightVariation.
+        /// Это делает границы высотных биомов неровными и не привязанными
+        /// к одной конкретной отметке рельефа.
+        /// </summary>
+        private int GetBiomeHeightForBiome(
+            int x,
+            int z,
+            int terrainHeight)
+        {
+            float offsetX = GetSeedOffset(seed, 20);
+            float offsetZ = GetSeedOffset(seed, 21);
+
+            float variationNoise = Mathf.PerlinNoise(
+                (x + offsetX) * biomeHeightVariationScale,
+                (z + offsetZ) * biomeHeightVariationScale);
+
+            float variation =
+                (variationNoise * 2f - 1f) *
+                biomeHeightVariation;
+
+            return Mathf.RoundToInt(
+                terrainHeight + variation);
         }
 
         /// <summary>
