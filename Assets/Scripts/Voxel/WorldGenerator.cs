@@ -32,26 +32,26 @@ namespace Voxel
         [SerializeField, Min(0.0001f)] private float detailScale = 0.035f;
 
         [Tooltip("Размер горных массивов. Меньше = крупнее горы.")]
-        [SerializeField, Min(0.0001f)] private float mountainScale = 0.004f;
+        [SerializeField, Min(0.0001f)] private float mountainScale = 0.0008f;
 
         [Tooltip("Максимальное отклонение высоты при определении биома.")]
         [SerializeField, Min(0f)] private float biomeHeightVariation = 20f;
 
         [Tooltip("Размер областей отклонения границ биомов. Меньше = крупнее области.")]
-        [SerializeField, Min(0.0001f)] private float biomeHeightVariationScale = 0.012f;
+        [SerializeField, Min(0.0001f)] private float biomeHeightVariationScale = 0.0024f;
 
         [Header("Climate Noise")]
         [Tooltip("Размер температурных регионов. Меньше = крупнее регионы.")]
-        [SerializeField, Min(0.0001f)] private float temperatureScale = 0.015f;
+        [SerializeField, Min(0.0001f)] private float temperatureScale = 0.003f;
 
         [Tooltip("Размер влажностных регионов. Меньше = крупнее регионы.")]
-        [SerializeField, Min(0.0001f)] private float humidityScale = 0.012f;
+        [SerializeField, Min(0.0001f)] private float humidityScale = 0.0024f;
 
         [Tooltip("Размер материков и крупных географических регионов. Меньше = крупнее регионы.")]
-        [SerializeField, Min(0.0001f)] private float continentalnessScale = 0.006f;
+        [SerializeField, Min(0.0001f)] private float continentalnessScale = 0.0012f;
 
         [Tooltip("Размер областей рельефа. Меньше = крупнее горные/ровные регионы.")]
-        [SerializeField, Min(0.0001f)] private float erosionScale = 0.012f;
+        [SerializeField, Min(0.0001f)] private float erosionScale = 0.0024f;
 
         [Header("Layers")]
         [SerializeField] private int dirtDepth = 3;
